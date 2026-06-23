@@ -81,6 +81,7 @@ pipeline {
 
                     def key = "${params.TEST_OPTION}|${params.PLATFORM}|${params.OS}"
                     def scenario = scenarioMap[key]
+                    echo "Scenario lookup key: ${key}"
 
                     if (!scenario) {
                         error """
@@ -93,9 +94,20 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
 """
                     }
 
-                    env.SELECTED_SCENARIO = scenario
+                    env.SELECTED_SCENARIO = scenario.toString()
                     echo "Selected scenario: ${env.SELECTED_SCENARIO}"
                 }
+            }
+        }
+
+        stage('Validate Agent Tools') {
+            steps {
+                sh '''
+                    command -v curl >/dev/null 2>&1 || {
+                      echo "curl is required on the Jenkins agent. Install it with: sudo apt install -y curl"
+                      exit 127
+                    }
+                '''
             }
         }
 
@@ -122,7 +134,11 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
         stage('Provision Environment') {
             steps {
                 script {
-                    def payload = """
+                    if (!env.SELECTED_SCENARIO?.trim() || env.SELECTED_SCENARIO == 'null') {
+                        error "Selected scenario is empty. Check TEST_OPTION=${params.TEST_OPTION}, PLATFORM=${params.PLATFORM}, OS=${params.OS}"
+                    }
+
+                    writeFile file: 'provision_payload.json', text: """
                     {
                       "test_scenario": "${env.SELECTED_SCENARIO}",
                       "team": "${params.TEAM}",
@@ -135,7 +151,7 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                         script: """
                             curl -s -X POST '${params.PROVISION_API}/provision' \
                               -H 'Content-Type: application/json' \
-                              -d '${payload}'
+                              --data-binary @provision_payload.json
                         """,
                         returnStdout: true
                     ).trim()
