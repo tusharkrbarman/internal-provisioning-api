@@ -1,3 +1,17 @@
+def resolveScenario(testOption, platform, osName) {
+    def scenarioMap = [
+        'DPCPP Compiler Validation|ADL|windows-11'          : 'dpcpp-adl-win11-validation',
+        'DPCPP Compiler Validation|MTL|ubuntu-24.04'        : 'cpp-mtl-linux-validation',
+        'IDE Extension Validation|windows-client|windows-11': 'ide-extension-win11-validation',
+        'GPU Runtime Validation|DG2|windows-11'             : 'gpu-dg2-win11-validation',
+        'Package Validation|caas|linux'                     : 'package-validation-caas',
+        'Static Analysis|caas|linux'                        : 'static-analysis-caas',
+        'VM Smoke Validation|vm|ubuntu-24.04'               : 'oneapi-vm-smoke-validation'
+    ]
+
+    return scenarioMap["${testOption}|${platform}|${osName}"]
+}
+
 pipeline {
     agent any
 
@@ -69,18 +83,8 @@ pipeline {
         stage('Resolve Scenario') {
             steps {
                 script {
-                    def scenarioMap = [
-                        'DPCPP Compiler Validation|ADL|windows-11'       : 'dpcpp-adl-win11-validation',
-                        'DPCPP Compiler Validation|MTL|ubuntu-24.04'     : 'cpp-mtl-linux-validation',
-                        'IDE Extension Validation|windows-client|windows-11': 'ide-extension-win11-validation',
-                        'GPU Runtime Validation|DG2|windows-11'          : 'gpu-dg2-win11-validation',
-                        'Package Validation|caas|linux'                  : 'package-validation-caas',
-                        'Static Analysis|caas|linux'                     : 'static-analysis-caas',
-                        'VM Smoke Validation|vm|ubuntu-24.04'            : 'oneapi-vm-smoke-validation'
-                    ]
-
                     def key = "${params.TEST_OPTION}|${params.PLATFORM}|${params.OS}"
-                    def scenario = scenarioMap[key]
+                    def scenario = resolveScenario(params.TEST_OPTION, params.PLATFORM, params.OS)
                     echo "Scenario lookup key: ${key}"
 
                     if (!scenario) {
@@ -95,7 +99,7 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                     }
 
                     env.SELECTED_SCENARIO = scenario.toString()
-                    writeFile file: 'selected_scenario.txt', text: env.SELECTED_SCENARIO
+                    writeFile file: 'selected_scenario.txt', text: scenario.toString()
                     echo "Selected scenario: ${env.SELECTED_SCENARIO}"
                 }
             }
@@ -135,15 +139,24 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
         stage('Provision Environment') {
             steps {
                 script {
-                    env.SELECTED_SCENARIO = readFile('selected_scenario.txt').trim()
+                    def scenario = resolveScenario(params.TEST_OPTION, params.PLATFORM, params.OS)
+                    if (!scenario) {
+                        error "Unsupported selection before provisioning: TEST_OPTION=${params.TEST_OPTION}, PLATFORM=${params.PLATFORM}, OS=${params.OS}"
+                    }
 
-                    if (!env.SELECTED_SCENARIO?.trim() || env.SELECTED_SCENARIO == 'null') {
+                    def selectedScenario = fileExists('selected_scenario.txt')
+                        ? readFile('selected_scenario.txt').trim()
+                        : scenario.toString()
+
+                    env.SELECTED_SCENARIO = selectedScenario
+
+                    if (!selectedScenario?.trim() || selectedScenario == 'null') {
                         error "Selected scenario is empty. Check TEST_OPTION=${params.TEST_OPTION}, PLATFORM=${params.PLATFORM}, OS=${params.OS}"
                     }
 
                     writeFile file: 'provision_payload.json', text: """
                     {
-                      "test_scenario": "${env.SELECTED_SCENARIO}",
+                      "test_scenario": "${selectedScenario}",
                       "team": "${params.TEAM}",
                       "jenkins_build_id": "${env.BUILD_NUMBER}",
                       "duration_hours": ${params.DURATION_HOURS}
