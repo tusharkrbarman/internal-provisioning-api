@@ -112,8 +112,8 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                       echo "curl is required on the Jenkins agent. Install it with: sudo apt install -y curl"
                       exit 127
                     }
-                    command -v python3 >/dev/null 2>&1 || {
-                      echo "python3 is required on the Jenkins agent. Install it with: sudo apt install -y python3"
+                    command -v sed >/dev/null 2>&1 || {
+                      echo "sed is required on the Jenkins agent."
                       exit 127
                     }
                 '''
@@ -187,7 +187,7 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
 
                     env.REQUEST_ID = sh(
                         script: '''
-                            python3 -c 'import json; print(json.load(open("provision_response.json", encoding="utf-8")).get("request_id") or "")'
+                            sed -n 's/.*"request_id":"\\([^"]*\\)".*/\\1/p' provision_response.json
                         ''',
                         returnStdout: true
                     ).trim()
@@ -219,13 +219,13 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
 
                             def currentStatus = sh(
                                 script: '''
-                                    python3 -c 'import json; print(json.load(open("provision_status.json", encoding="utf-8")).get("status") or "")'
+                                    sed -n 's/.*"status":"\\([^"]*\\)".*/\\1/p' provision_status.json
                                 ''',
                                 returnStdout: true
                             ).trim()
                             def currentMessage = sh(
                                 script: '''
-                                    python3 -c 'import json; print(json.load(open("provision_status.json", encoding="utf-8")).get("message") or "")'
+                                    sed -n 's/.*"message":"\\([^"]*\\)".*/\\1/p' provision_status.json
                                 ''',
                                 returnStdout: true
                             ).trim()
@@ -235,13 +235,13 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                             if (currentStatus == 'READY') {
                                 env.RESERVATION_ID = sh(
                                     script: '''
-                                        python3 -c 'import json; print(json.load(open("provision_status.json", encoding="utf-8")).get("reservation_id") or "")'
+                                        sed -n 's/.*"reservation_id":"\\([^"]*\\)".*/\\1/p' provision_status.json
                                     ''',
                                     returnStdout: true
                                 ).trim()
                                 env.MACHINE_ID = sh(
                                     script: '''
-                                        python3 -c 'import json; print(json.load(open("provision_status.json", encoding="utf-8")).get("machine_id") or "")'
+                                        sed -n 's/.*"machine_id":"\\([^"]*\\)".*/\\1/p' provision_status.json
                                     ''',
                                     returnStdout: true
                                 ).trim()
