@@ -167,20 +167,32 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                     }
                     """
 
-                    sh(
+                    def provisionHttpCode = sh(
                         script: """
-                            curl -s -X POST '${params.PROVISION_API}/provision' \
+                            curl -sS -o provision_response.json -w '%{http_code}' \
+                              -X POST '${params.PROVISION_API}/provision' \
                               -H 'Content-Type: application/json' \
-                              --data-binary @provision_payload.json \
-                              -o provision_response.json
-                        """
-                    )
+                              --data-binary @provision_payload.json
+                        """,
+                        returnStdout: true
+                    ).trim()
 
                     def responseText = readFile('provision_response.json').trim()
 
+                    echo "Provision HTTP status: ${provisionHttpCode}"
                     echo "Provision response: ${responseText}"
+                    if (!(provisionHttpCode in ['200', '201', '202'])) {
+                        error "Provisioning API returned HTTP ${provisionHttpCode}: ${responseText}"
+                    }
+
                     env.REQUEST_ID = sh(
-                        script: "python3 -c \"import json; print(json.load(open('provision_response.json')).get('request_id',''))\"",
+                        script: '''
+                            python3 - <<'PY'
+import json
+with open('provision_response.json', encoding='utf-8') as response_file:
+    print(json.load(response_file).get('request_id') or '')
+PY
+                        ''',
                         returnStdout: true
                     ).trim()
 
@@ -196,15 +208,37 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                 script {
                     timeout(time: 15, unit: 'MINUTES') {
                         waitUntil {
-                            sh "curl -s '${params.PROVISION_API}/provision/${env.REQUEST_ID}/status' -o provision_status.json"
+                            def statusHttpCode = sh(
+                                script: """
+                                    curl -sS -o provision_status.json -w '%{http_code}' \
+                                      '${params.PROVISION_API}/provision/${env.REQUEST_ID}/status'
+                                """,
+                                returnStdout: true
+                            ).trim()
 
                             def statusText = readFile('provision_status.json').trim()
+                            if (!(statusHttpCode in ['200'])) {
+                                error "Provisioning status API returned HTTP ${statusHttpCode}: ${statusText}"
+                            }
+
                             def currentStatus = sh(
-                                script: "python3 -c \"import json; print(json.load(open('provision_status.json')).get('status',''))\"",
+                                script: '''
+                                    python3 - <<'PY'
+import json
+with open('provision_status.json', encoding='utf-8') as response_file:
+    print(json.load(response_file).get('status') or '')
+PY
+                                ''',
                                 returnStdout: true
                             ).trim()
                             def currentMessage = sh(
-                                script: "python3 -c \"import json; print(json.load(open('provision_status.json')).get('message',''))\"",
+                                script: '''
+                                    python3 - <<'PY'
+import json
+with open('provision_status.json', encoding='utf-8') as response_file:
+    print(json.load(response_file).get('message') or '')
+PY
+                                ''',
                                 returnStdout: true
                             ).trim()
 
@@ -212,11 +246,23 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
 
                             if (currentStatus == 'READY') {
                                 env.RESERVATION_ID = sh(
-                                    script: "python3 -c \"import json; print(json.load(open('provision_status.json')).get('reservation_id') or '')\"",
+                                    script: '''
+                                        python3 - <<'PY'
+import json
+with open('provision_status.json', encoding='utf-8') as response_file:
+    print(json.load(response_file).get('reservation_id') or '')
+PY
+                                    ''',
                                     returnStdout: true
                                 ).trim()
                                 env.MACHINE_ID = sh(
-                                    script: "python3 -c \"import json; print(json.load(open('provision_status.json')).get('machine_id') or '')\"",
+                                    script: '''
+                                        python3 - <<'PY'
+import json
+with open('provision_status.json', encoding='utf-8') as response_file:
+    print(json.load(response_file).get('machine_id') or '')
+PY
+                                    ''',
                                     returnStdout: true
                                 ).trim()
                                 echo "Machine ready: ${env.MACHINE_ID}"
