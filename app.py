@@ -326,7 +326,6 @@ def run_provisioning_workflow(request_id: str, request: ProvisionRequest) -> Non
             )
             return
 
-        deployment_image = choose_deployment_image(scenario, machine)
         reservation_id = create_provider_reservation(
             provider=scenario.provider,
             machine_id=machine.machine_id,
@@ -334,13 +333,15 @@ def run_provisioning_workflow(request_id: str, request: ProvisionRequest) -> Non
             duration_hours=request.duration_hours,
             jenkins_build_id=request.jenkins_build_id,
         )
+
+        deployment_image = choose_deployment_image(scenario, machine)
         update_record(
             request_id,
             reservation_id=reservation_id,
             machine_id=machine.machine_id,
             image=deployment_image,
             status=ProvisionStatus.IMAGE_DEPLOYING,
-            message="Reservation created. Triggering image deployment.",
+            message="Reservation created. Deploying validation image.",
         )
 
         deployment_id = deploy_provider_image(
@@ -354,6 +355,7 @@ def run_provisioning_workflow(request_id: str, request: ProvisionRequest) -> Non
         status = ProvisionStatus.RESERVATION_FAILED
         if exc.response.request.method == "POST" and "deploy-image" in str(exc.request.url):
             status = ProvisionStatus.IMAGE_DEPLOY_FAILED
+
         update_record(
             request_id,
             status=status,
@@ -411,7 +413,7 @@ def select_machine(scenario: ScenarioConfig, team: str) -> Machine | None:
         if scenario.provider == Provider.GTAX and scenario.workload_type == "caas":
             if machine.platform != "caas":
                 continue
-            if not machine.supported_images:
+            if scenario.image not in machine.supported_images:
                 continue
             return machine
 
@@ -492,7 +494,7 @@ def wait_for_deployment(request_id: str, provider: Provider, deployment_id: str)
             update_record(
                 request_id,
                 status=ProvisionStatus.READY,
-                message="Machine reserved and image deployment completed.",
+                message="Machine reserved and validation image deployed. Jenkins can start validation.",
             )
             return
 

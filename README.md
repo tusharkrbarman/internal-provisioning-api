@@ -2,7 +2,7 @@
 
 Jenkins-facing FastAPI middleware that brokers validation environment provisioning across OneCloud and GTAX-style provider APIs.
 
-Jenkins calls this service with a validation scenario. The middleware resolves the scenario, queries the correct provider API, filters eligible team-tagged machines, creates a reservation, triggers image deployment, tracks normalized status, and exposes a polling endpoint.
+Jenkins calls this service with a validation scenario. The middleware resolves the scenario, queries the correct provider API, filters eligible team-tagged machines, creates a reservation, deploys the validation image, tracks normalized status, and exposes a polling endpoint. Once the API reports `READY`, Jenkins owns validation execution and calls the API again when it is time to release the machine.
 
 ## Endpoints
 
@@ -12,7 +12,9 @@ GET  /provider-health
 GET  /scenarios
 GET  /machines
 POST /provision
+POST /provision/request-id
 GET  /provision/{request_id}/status
+GET  /provision/{request_id}/status-line
 POST /reservations/{reservation_id}/release
 ```
 
@@ -70,9 +72,9 @@ Static Analysis    -> GTAX CaaS
 All other scenarios -> OneCloud
 ```
 
-For GTAX CaaS scenarios, the middleware selects an available, clean, team-tagged CaaS machine.
+For GTAX CaaS scenarios, the middleware selects an available, clean, team-tagged CaaS machine that supports the requested validation image.
 
-For OneCloud scenarios, the middleware selects any available, clean, team-tagged OneCloud machine. It does not require an exact platform or OS match. If the scenario image is not supported by the selected machine, the middleware uses the first supported image for that machine.
+For OneCloud scenarios, the middleware selects any available, clean, team-tagged OneCloud machine. It does not require an exact platform or OS match. If the scenario image is not supported by the selected machine, the middleware uses the first supported image for that machine so the dummy provider can complete deployment.
 
 ## Jenkins Parameterized Pipeline
 
