@@ -202,14 +202,20 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                             def statusParts = statusText.split('\\|', -1)
                             def currentStatus = statusParts.length > 0 ? statusParts[0] : ''
                             def currentMessage = statusParts.length > 1 ? statusParts[1] : ''
+                            def reservationId = statusParts.length > 2 ? statusParts[2] : ''
+                            def machineId = statusParts.length > 3 ? statusParts[3] : ''
+
+                            if (reservationId?.trim()) {
+                                writeFile file: 'reservation_id.txt', text: reservationId
+                            }
+
+                            if (machineId?.trim()) {
+                                writeFile file: 'machine_id.txt', text: machineId
+                            }
 
                             echo "Provisioning status: ${currentStatus} - ${currentMessage}"
 
                             if (currentStatus == 'READY') {
-                                def reservationId = statusParts.length > 2 ? statusParts[2] : ''
-                                def machineId = statusParts.length > 3 ? statusParts[3] : ''
-                                writeFile file: 'reservation_id.txt', text: reservationId
-                                writeFile file: 'machine_id.txt', text: machineId
                                 echo "Machine ready: ${machineId}"
                                 return true
                             }
@@ -264,9 +270,12 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                     : ''
 
                 if (reservationId?.trim()) {
+                    echo "Releasing reservation: ${reservationId}"
                     sh """
                         curl -s -X POST '${params.PROVISION_API}/reservations/${reservationId}/release' || true
                     """
+                } else {
+                    echo "No reservation ID found, nothing to release."
                 }
             }
         }
