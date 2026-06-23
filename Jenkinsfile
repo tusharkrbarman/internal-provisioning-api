@@ -99,6 +99,26 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
             }
         }
 
+        stage('Checkout Source') {
+            steps {
+                sh '''
+                    echo "Checking out product source for ${SELECTED_SCENARIO}"
+                    echo "Simulating source sync and dependency metadata setup..."
+                    sleep 60
+                '''
+            }
+        }
+
+        stage('Build Package') {
+            steps {
+                sh '''
+                    echo "Building oneAPI validation package for ${SELECTED_SCENARIO}"
+                    echo "Simulating compile, package, and artifact staging..."
+                    sleep 60
+                '''
+            }
+        }
+
         stage('Provision Environment') {
             steps {
                 script {
@@ -174,7 +194,18 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                 sh '''
                     echo "Running scenario: ${SELECTED_SCENARIO}"
                     echo "Reserved machine: ${MACHINE_ID}"
-                    echo "This is where the real validation command would run."
+                    echo "Simulating validation execution on the provisioned machine..."
+                    sleep 60
+                '''
+            }
+        }
+
+        stage('Publish Results') {
+            steps {
+                sh '''
+                    echo "Collecting logs, test reports, and machine metadata..."
+                    echo "Simulating result publishing and CI summary generation..."
+                    sleep 60
                 '''
             }
         }
