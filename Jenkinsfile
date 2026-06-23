@@ -121,7 +121,7 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                 sh '''
                     echo "Checking out product source for ${SELECTED_SCENARIO}"
                     echo "Simulating source sync and dependency metadata setup..."
-                    sleep 60
+                    sleep 30
                 '''
             }
         }
@@ -131,7 +131,7 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                 sh '''
                     echo "Building oneAPI validation package for ${SELECTED_SCENARIO}"
                     echo "Simulating compile, package, and artifact staging..."
-                    sleep 60
+                    sleep 30
                 '''
             }
         }
@@ -227,7 +227,7 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                     echo "Running scenario: ${SELECTED_SCENARIO}"
                     echo "Reserved machine: ${MACHINE_ID}"
                     echo "Simulating validation execution on the provisioned machine..."
-                    sleep 60
+                    sleep 30
                 '''
             }
         }
@@ -237,7 +237,7 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                 sh '''
                     echo "Collecting logs, test reports, and machine metadata..."
                     echo "Simulating result publishing and CI summary generation..."
-                    sleep 60
+                    sleep 30
                 '''
             }
         }
