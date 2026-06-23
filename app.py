@@ -157,7 +157,7 @@ PROVIDER_URLS = {
     Provider.ONECLOUD: os.getenv("ONECLOUD_BASE_URL", "https://dummy-onecloud-api.onrender.com").rstrip("/"),
     Provider.GTAX: os.getenv("GTAX_BASE_URL", "https://dummy-gtax-api.onrender.com").rstrip("/"),
 }
-PROVIDER_REQUEST_TIMEOUT_SECONDS = float(os.getenv("PROVIDER_REQUEST_TIMEOUT_SECONDS", "10"))
+PROVIDER_REQUEST_TIMEOUT_SECONDS = float(os.getenv("PROVIDER_REQUEST_TIMEOUT_SECONDS", "60"))
 POLL_INTERVAL_SECONDS = float(os.getenv("PROVISION_POLL_INTERVAL_SECONDS", "2"))
 PROVISION_TIMEOUT_SECONDS = float(os.getenv("PROVISION_TIMEOUT_SECONDS", "300"))
 

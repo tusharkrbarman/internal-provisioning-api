@@ -23,6 +23,7 @@ POST /reservations/{reservation_id}/release
 ```text
 ONECLOUD_BASE_URL=https://dummy-onecloud-api.onrender.com
 GTAX_BASE_URL=https://dummy-gtax-api.onrender.com
+PROVIDER_REQUEST_TIMEOUT_SECONDS=60
 PROVISION_POLL_INTERVAL_SECONDS=2
 PROVISION_TIMEOUT_SECONDS=300
 ```
