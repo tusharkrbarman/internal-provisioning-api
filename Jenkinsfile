@@ -187,17 +187,13 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
 
                     env.REQUEST_ID = sh(
                         script: '''
-                            python3 - <<'PY'
-import json
-with open('provision_response.json', encoding='utf-8') as response_file:
-    print(json.load(response_file).get('request_id') or '')
-PY
+                            python3 -c 'import json; print(json.load(open("provision_response.json", encoding="utf-8")).get("request_id") or "")'
                         ''',
                         returnStdout: true
                     ).trim()
 
                     if (!env.REQUEST_ID?.trim()) {
-                        error "Provisioning API did not return a request_id"
+                        error "Provisioning API did not return a request_id. HTTP ${provisionHttpCode}. Body: ${responseText}"
                     }
                 }
             }
@@ -223,21 +219,13 @@ PY
 
                             def currentStatus = sh(
                                 script: '''
-                                    python3 - <<'PY'
-import json
-with open('provision_status.json', encoding='utf-8') as response_file:
-    print(json.load(response_file).get('status') or '')
-PY
+                                    python3 -c 'import json; print(json.load(open("provision_status.json", encoding="utf-8")).get("status") or "")'
                                 ''',
                                 returnStdout: true
                             ).trim()
                             def currentMessage = sh(
                                 script: '''
-                                    python3 - <<'PY'
-import json
-with open('provision_status.json', encoding='utf-8') as response_file:
-    print(json.load(response_file).get('message') or '')
-PY
+                                    python3 -c 'import json; print(json.load(open("provision_status.json", encoding="utf-8")).get("message") or "")'
                                 ''',
                                 returnStdout: true
                             ).trim()
@@ -247,21 +235,13 @@ PY
                             if (currentStatus == 'READY') {
                                 env.RESERVATION_ID = sh(
                                     script: '''
-                                        python3 - <<'PY'
-import json
-with open('provision_status.json', encoding='utf-8') as response_file:
-    print(json.load(response_file).get('reservation_id') or '')
-PY
+                                        python3 -c 'import json; print(json.load(open("provision_status.json", encoding="utf-8")).get("reservation_id") or "")'
                                     ''',
                                     returnStdout: true
                                 ).trim()
                                 env.MACHINE_ID = sh(
                                     script: '''
-                                        python3 - <<'PY'
-import json
-with open('provision_status.json', encoding='utf-8') as response_file:
-    print(json.load(response_file).get('machine_id') or '')
-PY
+                                        python3 -c 'import json; print(json.load(open("provision_status.json", encoding="utf-8")).get("machine_id") or "")'
                                     ''',
                                     returnStdout: true
                                 ).trim()
