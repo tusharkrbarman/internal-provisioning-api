@@ -40,11 +40,7 @@ pipeline {
         choice(
             name: 'TEAM',
             choices: [
-                'oneapi',
-                'compiler-validation',
-                'ide-validation',
-                'gpu-validation',
-                'package-validation'
+                'oneapi'
             ],
             description: 'Team tag used for resource filtering'
         )
