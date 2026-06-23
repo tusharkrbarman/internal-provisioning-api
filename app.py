@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
 
@@ -215,6 +216,19 @@ def list_machines(provider: Provider | None = None, allow_partial: bool = False)
 
 @app.post("/provision", response_model=ProvisionRecord, status_code=202)
 def provision(request: ProvisionRequest, background_tasks: BackgroundTasks) -> ProvisionRecord:
+    return create_provisioning_request(request, background_tasks)
+
+
+@app.post("/provision/request-id", response_class=PlainTextResponse, status_code=202)
+def provision_request_id(request: ProvisionRequest, background_tasks: BackgroundTasks) -> str:
+    record = create_provisioning_request(request, background_tasks)
+    return record.request_id
+
+
+def create_provisioning_request(
+    request: ProvisionRequest,
+    background_tasks: BackgroundTasks,
+) -> ProvisionRecord:
     scenario = SCENARIOS.get(request.test_scenario)
     if scenario is None:
         raise HTTPException(status_code=400, detail=f"Unknown test scenario: {request.test_scenario}")
@@ -241,6 +255,18 @@ def get_status(request_id: str) -> ProvisionRecord:
     if record is None:
         raise HTTPException(status_code=404, detail="Provisioning request not found")
     return record
+
+
+@app.get("/provision/{request_id}/status-line", response_class=PlainTextResponse)
+def get_status_line(request_id: str) -> str:
+    record = get_status(request_id)
+    fields = [
+        record.status.value,
+        safe_status_field(record.message),
+        record.reservation_id or "",
+        record.machine_id or "",
+    ]
+    return "|".join(fields)
 
 
 @app.post("/reservations/{reservation_id}/release", response_model=ReleaseResponse)
@@ -512,3 +538,7 @@ def check_provider_health(provider: Provider) -> ProviderHealth:
             reachable=False,
             error=str(exc),
         )
+
+
+def safe_status_field(value: str) -> str:
+    return value.replace("|", "/").replace("\n", " ").replace("\r", " ")

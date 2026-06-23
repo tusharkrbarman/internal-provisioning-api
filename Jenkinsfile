@@ -12,11 +12,6 @@ def resolveScenario(testOption, platform, osName) {
     return scenarioMap["${testOption}|${platform}|${osName}"]
 }
 
-def extractJsonString(jsonText, fieldName) {
-    def matcher = jsonText =~ /"${fieldName}"\s*:\s*"([^"]*)"/
-    return matcher.find() ? matcher.group(1) : ''
-}
-
 pipeline {
     agent any
 
@@ -170,23 +165,23 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
 
                     def provisionHttpCode = sh(
                         script: """
-                            curl -sS -o provision_response.json -w '%{http_code}' \
-                              -X POST '${params.PROVISION_API}/provision' \
+                            curl -sS -o request_id.txt -w '%{http_code}' \
+                              -X POST '${params.PROVISION_API}/provision/request-id' \
                               -H 'Content-Type: application/json' \
                               --data-binary @provision_payload.json
                         """,
                         returnStdout: true
                     ).trim()
 
-                    def responseText = readFile('provision_response.json').trim()
+                    def responseText = readFile('request_id.txt').trim()
 
                     echo "Provision HTTP status: ${provisionHttpCode}"
-                    echo "Provision response: ${responseText}"
+                    echo "Provision request ID response: ${responseText}"
                     if (!(provisionHttpCode in ['200', '201', '202'])) {
                         error "Provisioning API returned HTTP ${provisionHttpCode}: ${responseText}"
                     }
 
-                    env.REQUEST_ID = extractJsonString(responseText, 'request_id')
+                    env.REQUEST_ID = responseText
 
                     if (!env.REQUEST_ID?.trim()) {
                         error "Provisioning API did not return a request_id. HTTP ${provisionHttpCode}. Body: ${responseText}"
@@ -202,25 +197,26 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                         waitUntil {
                             def statusHttpCode = sh(
                                 script: """
-                                    curl -sS -o provision_status.json -w '%{http_code}' \
-                                      '${params.PROVISION_API}/provision/${env.REQUEST_ID}/status'
+                                    curl -sS -o provision_status.txt -w '%{http_code}' \
+                                      '${params.PROVISION_API}/provision/${env.REQUEST_ID}/status-line'
                                 """,
                                 returnStdout: true
                             ).trim()
 
-                            def statusText = readFile('provision_status.json').trim()
+                            def statusText = readFile('provision_status.txt').trim()
                             if (!(statusHttpCode in ['200'])) {
                                 error "Provisioning status API returned HTTP ${statusHttpCode}: ${statusText}"
                             }
 
-                            def currentStatus = extractJsonString(statusText, 'status')
-                            def currentMessage = extractJsonString(statusText, 'message')
+                            def statusParts = statusText.split('\\|', -1)
+                            def currentStatus = statusParts.length > 0 ? statusParts[0] : ''
+                            def currentMessage = statusParts.length > 1 ? statusParts[1] : ''
 
                             echo "Provisioning status: ${currentStatus} - ${currentMessage}"
 
                             if (currentStatus == 'READY') {
-                                env.RESERVATION_ID = extractJsonString(statusText, 'reservation_id')
-                                env.MACHINE_ID = extractJsonString(statusText, 'machine_id')
+                                env.RESERVATION_ID = statusParts.length > 2 ? statusParts[2] : ''
+                                env.MACHINE_ID = statusParts.length > 3 ? statusParts[3] : ''
                                 echo "Machine ready: ${env.MACHINE_ID}"
                                 return true
                             }
