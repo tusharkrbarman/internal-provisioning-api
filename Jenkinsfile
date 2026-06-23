@@ -112,6 +112,10 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                       echo "curl is required on the Jenkins agent. Install it with: sudo apt install -y curl"
                       exit 127
                     }
+                    command -v python3 >/dev/null 2>&1 || {
+                      echo "python3 is required on the Jenkins agent. Install it with: sudo apt install -y python3"
+                      exit 127
+                    }
                 '''
             }
         }
@@ -163,18 +167,22 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                     }
                     """
 
-                    def responseText = sh(
+                    sh(
                         script: """
                             curl -s -X POST '${params.PROVISION_API}/provision' \
                               -H 'Content-Type: application/json' \
-                              --data-binary @provision_payload.json
-                        """,
-                        returnStdout: true
-                    ).trim()
+                              --data-binary @provision_payload.json \
+                              -o provision_response.json
+                        """
+                    )
+
+                    def responseText = readFile('provision_response.json').trim()
 
                     echo "Provision response: ${responseText}"
-                    def response = new groovy.json.JsonSlurperClassic().parseText(responseText)
-                    env.REQUEST_ID = response.request_id
+                    env.REQUEST_ID = sh(
+                        script: "python3 -c \"import json; print(json.load(open('provision_response.json')).get('request_id',''))\"",
+                        returnStdout: true
+                    ).trim()
 
                     if (!env.REQUEST_ID?.trim()) {
                         error "Provisioning API did not return a request_id"
@@ -188,17 +196,29 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                 script {
                     timeout(time: 15, unit: 'MINUTES') {
                         waitUntil {
-                            def statusText = sh(
-                                script: "curl -s '${params.PROVISION_API}/provision/${env.REQUEST_ID}/status'",
+                            sh "curl -s '${params.PROVISION_API}/provision/${env.REQUEST_ID}/status' -o provision_status.json"
+
+                            def statusText = readFile('provision_status.json').trim()
+                            def currentStatus = sh(
+                                script: "python3 -c \"import json; print(json.load(open('provision_status.json')).get('status',''))\"",
+                                returnStdout: true
+                            ).trim()
+                            def currentMessage = sh(
+                                script: "python3 -c \"import json; print(json.load(open('provision_status.json')).get('message',''))\"",
                                 returnStdout: true
                             ).trim()
 
-                            def status = new groovy.json.JsonSlurperClassic().parseText(statusText)
-                            echo "Provisioning status: ${status.status} - ${status.message}"
+                            echo "Provisioning status: ${currentStatus} - ${currentMessage}"
 
-                            if (status.status == 'READY') {
-                                env.RESERVATION_ID = status.reservation_id ?: ''
-                                env.MACHINE_ID = status.machine_id ?: ''
+                            if (currentStatus == 'READY') {
+                                env.RESERVATION_ID = sh(
+                                    script: "python3 -c \"import json; print(json.load(open('provision_status.json')).get('reservation_id') or '')\"",
+                                    returnStdout: true
+                                ).trim()
+                                env.MACHINE_ID = sh(
+                                    script: "python3 -c \"import json; print(json.load(open('provision_status.json')).get('machine_id') or '')\"",
+                                    returnStdout: true
+                                ).trim()
                                 echo "Machine ready: ${env.MACHINE_ID}"
                                 return true
                             }
@@ -209,8 +229,9 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                                 'IMAGE_DEPLOY_FAILED',
                                 'PROVISIONING_TIMEOUT',
                                 'FAILED'
-                            ].contains(status.status)) {
-                                error "Provisioning failed: ${status.status} - ${status.message}"
+                            ].contains(currentStatus)) {
+                                echo "Provision status response: ${statusText}"
+                                error "Provisioning failed: ${currentStatus} - ${currentMessage}"
                             }
 
                             sleep 10
