@@ -80,7 +80,6 @@ This repo includes a `Jenkinsfile` that shows a parameterized Jenkins pipeline. 
 
 ```text
 TEST_OPTION
-PLATFORM
 OS
 TEAM
 PROVISION_API
@@ -90,9 +89,9 @@ DURATION_HOURS
 The Jenkinsfile maps valid option combinations to provisioning scenarios such as:
 
 ```text
-DPCPP Compiler Validation + ADL + windows-11 -> dpcpp-adl-win11-validation
-Package Validation + caas + linux -> package-validation-caas
-VM Smoke Validation + vm + ubuntu-24.04 -> oneapi-vm-smoke-validation
+DPCPP Compiler Validation + windows-11 -> dpcpp-adl-win11-validation
+Package Validation + linux -> package-validation-caas
+VM Smoke Validation + ubuntu-24.04 -> oneapi-vm-smoke-validation
 ```
 
 Unsupported combinations fail early in the `Resolve Scenario` stage.

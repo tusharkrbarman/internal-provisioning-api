@@ -1,15 +1,15 @@
-def resolveScenario(testOption, platform, osName) {
+def resolveScenario(testOption, osName) {
     def scenarioMap = [
-        'DPCPP Compiler Validation|ADL|windows-11'          : 'dpcpp-adl-win11-validation',
-        'DPCPP Compiler Validation|MTL|ubuntu-24.04'        : 'cpp-mtl-linux-validation',
-        'IDE Extension Validation|windows-client|windows-11': 'ide-extension-win11-validation',
-        'GPU Runtime Validation|DG2|windows-11'             : 'gpu-dg2-win11-validation',
-        'Package Validation|caas|linux'                     : 'package-validation-caas',
-        'Static Analysis|caas|linux'                        : 'static-analysis-caas',
-        'VM Smoke Validation|vm|ubuntu-24.04'               : 'oneapi-vm-smoke-validation'
+        'DPCPP Compiler Validation|windows-11'       : 'dpcpp-adl-win11-validation',
+        'DPCPP Compiler Validation|ubuntu-24.04'     : 'cpp-mtl-linux-validation',
+        'IDE Extension Validation|windows-11'        : 'ide-extension-win11-validation',
+        'GPU Runtime Validation|windows-11'          : 'gpu-dg2-win11-validation',
+        'Package Validation|linux'                   : 'package-validation-caas',
+        'Static Analysis|linux'                      : 'static-analysis-caas',
+        'VM Smoke Validation|ubuntu-24.04'           : 'oneapi-vm-smoke-validation'
     ]
 
-    return scenarioMap["${testOption}|${platform}|${osName}"]
+    return scenarioMap["${testOption}|${osName}"]
 }
 
 pipeline {
@@ -27,18 +27,6 @@ pipeline {
                 'VM Smoke Validation'
             ],
             description: 'Validation workflow to run'
-        )
-        choice(
-            name: 'PLATFORM',
-            choices: [
-                'ADL',
-                'MTL',
-                'DG2',
-                'windows-client',
-                'caas',
-                'vm'
-            ],
-            description: 'Target platform or execution environment'
         )
         choice(
             name: 'OS',
@@ -83,15 +71,14 @@ pipeline {
         stage('Resolve Scenario') {
             steps {
                 script {
-                    def key = "${params.TEST_OPTION}|${params.PLATFORM}|${params.OS}"
-                    def scenario = resolveScenario(params.TEST_OPTION, params.PLATFORM, params.OS)
+                    def key = "${params.TEST_OPTION}|${params.OS}"
+                    def scenario = resolveScenario(params.TEST_OPTION, params.OS)
                     echo "Scenario lookup key: ${key}"
 
                     if (!scenario) {
                         error """
 Unsupported validation selection:
   TEST_OPTION=${params.TEST_OPTION}
-  PLATFORM=${params.PLATFORM}
   OS=${params.OS}
 
 Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
@@ -139,9 +126,9 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
         stage('Provision Environment') {
             steps {
                 script {
-                    def scenario = resolveScenario(params.TEST_OPTION, params.PLATFORM, params.OS)
+                    def scenario = resolveScenario(params.TEST_OPTION, params.OS)
                     if (!scenario) {
-                        error "Unsupported selection before provisioning: TEST_OPTION=${params.TEST_OPTION}, PLATFORM=${params.PLATFORM}, OS=${params.OS}"
+                        error "Unsupported selection before provisioning: TEST_OPTION=${params.TEST_OPTION}, OS=${params.OS}"
                     }
 
                     def selectedScenario = fileExists('selected_scenario.txt')
@@ -151,7 +138,7 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                     env.SELECTED_SCENARIO = selectedScenario
 
                     if (!selectedScenario?.trim() || selectedScenario == 'null') {
-                        error "Selected scenario is empty. Check TEST_OPTION=${params.TEST_OPTION}, PLATFORM=${params.PLATFORM}, OS=${params.OS}"
+                        error "Selected scenario is empty. Check TEST_OPTION=${params.TEST_OPTION}, OS=${params.OS}"
                     }
 
                     writeFile file: 'provision_payload.json', text: """
