@@ -12,6 +12,11 @@ def resolveScenario(testOption, platform, osName) {
     return scenarioMap["${testOption}|${platform}|${osName}"]
 }
 
+def extractJsonString(jsonText, fieldName) {
+    def matcher = jsonText =~ /"${fieldName}"\s*:\s*"([^"]*)"/
+    return matcher.find() ? matcher.group(1) : ''
+}
+
 pipeline {
     agent any
 
@@ -112,10 +117,6 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                       echo "curl is required on the Jenkins agent. Install it with: sudo apt install -y curl"
                       exit 127
                     }
-                    command -v sed >/dev/null 2>&1 || {
-                      echo "sed is required on the Jenkins agent."
-                      exit 127
-                    }
                 '''
             }
         }
@@ -185,12 +186,7 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                         error "Provisioning API returned HTTP ${provisionHttpCode}: ${responseText}"
                     }
 
-                    env.REQUEST_ID = sh(
-                        script: '''
-                            sed -n 's/.*"request_id":"\\([^"]*\\)".*/\\1/p' provision_response.json
-                        ''',
-                        returnStdout: true
-                    ).trim()
+                    env.REQUEST_ID = extractJsonString(responseText, 'request_id')
 
                     if (!env.REQUEST_ID?.trim()) {
                         error "Provisioning API did not return a request_id. HTTP ${provisionHttpCode}. Body: ${responseText}"
@@ -217,34 +213,14 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                                 error "Provisioning status API returned HTTP ${statusHttpCode}: ${statusText}"
                             }
 
-                            def currentStatus = sh(
-                                script: '''
-                                    sed -n 's/.*"status":"\\([^"]*\\)".*/\\1/p' provision_status.json
-                                ''',
-                                returnStdout: true
-                            ).trim()
-                            def currentMessage = sh(
-                                script: '''
-                                    sed -n 's/.*"message":"\\([^"]*\\)".*/\\1/p' provision_status.json
-                                ''',
-                                returnStdout: true
-                            ).trim()
+                            def currentStatus = extractJsonString(statusText, 'status')
+                            def currentMessage = extractJsonString(statusText, 'message')
 
                             echo "Provisioning status: ${currentStatus} - ${currentMessage}"
 
                             if (currentStatus == 'READY') {
-                                env.RESERVATION_ID = sh(
-                                    script: '''
-                                        sed -n 's/.*"reservation_id":"\\([^"]*\\)".*/\\1/p' provision_status.json
-                                    ''',
-                                    returnStdout: true
-                                ).trim()
-                                env.MACHINE_ID = sh(
-                                    script: '''
-                                        sed -n 's/.*"machine_id":"\\([^"]*\\)".*/\\1/p' provision_status.json
-                                    ''',
-                                    returnStdout: true
-                                ).trim()
+                                env.RESERVATION_ID = extractJsonString(statusText, 'reservation_id')
+                                env.MACHINE_ID = extractJsonString(statusText, 'machine_id')
                                 echo "Machine ready: ${env.MACHINE_ID}"
                                 return true
                             }
