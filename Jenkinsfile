@@ -48,7 +48,7 @@ pipeline {
         )
         string(
             name: 'PROVISION_API',
-            defaultValue: 'https://internal-provisioning-api.onrender.com',
+            defaultValue: 'http://65.2.79.175:8080',
             description: 'Middleware provisioning API base URL'
         )
         string(
