@@ -181,11 +181,14 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                         error "Provisioning API returned HTTP ${provisionHttpCode}: ${responseText}"
                     }
 
-                    env.REQUEST_ID = responseText
+                    def requestId = responseText
 
-                    if (!env.REQUEST_ID?.trim()) {
+                    if (!requestId?.trim()) {
                         error "Provisioning API did not return a request_id. HTTP ${provisionHttpCode}. Body: ${responseText}"
                     }
+
+                    writeFile file: 'request_id.txt', text: requestId
+                    echo "Provision request ID: ${requestId}"
                 }
             }
         }
@@ -195,10 +198,15 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                 script {
                     timeout(time: 15, unit: 'MINUTES') {
                         waitUntil {
+                            def requestId = readFile('request_id.txt').trim()
+                            if (!requestId?.trim()) {
+                                error "Missing request_id.txt before status polling"
+                            }
+
                             def statusHttpCode = sh(
                                 script: """
                                     curl -sS -o provision_status.txt -w '%{http_code}' \
-                                      '${params.PROVISION_API}/provision/${env.REQUEST_ID}/status-line'
+                                      '${params.PROVISION_API}/provision/${requestId}/status-line'
                                 """,
                                 returnStdout: true
                             ).trim()
@@ -215,9 +223,11 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                             echo "Provisioning status: ${currentStatus} - ${currentMessage}"
 
                             if (currentStatus == 'READY') {
-                                env.RESERVATION_ID = statusParts.length > 2 ? statusParts[2] : ''
-                                env.MACHINE_ID = statusParts.length > 3 ? statusParts[3] : ''
-                                echo "Machine ready: ${env.MACHINE_ID}"
+                                def reservationId = statusParts.length > 2 ? statusParts[2] : ''
+                                def machineId = statusParts.length > 3 ? statusParts[3] : ''
+                                writeFile file: 'reservation_id.txt', text: reservationId
+                                writeFile file: 'machine_id.txt', text: machineId
+                                echo "Machine ready: ${machineId}"
                                 return true
                             }
 
@@ -243,6 +253,7 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
         stage('Run Validation') {
             steps {
                 sh '''
+                    MACHINE_ID="$(cat machine_id.txt 2>/dev/null || true)"
                     echo "Running scenario: ${SELECTED_SCENARIO}"
                     echo "Reserved machine: ${MACHINE_ID}"
                     echo "Simulating validation execution on the provisioned machine..."
@@ -265,9 +276,13 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
     post {
         always {
             script {
-                if (env.RESERVATION_ID?.trim()) {
+                def reservationId = fileExists('reservation_id.txt')
+                    ? readFile('reservation_id.txt').trim()
+                    : ''
+
+                if (reservationId?.trim()) {
                     sh """
-                        curl -s -X POST '${params.PROVISION_API}/reservations/${env.RESERVATION_ID}/release' || true
+                        curl -s -X POST '${params.PROVISION_API}/reservations/${reservationId}/release' || true
                     """
                 }
             }
