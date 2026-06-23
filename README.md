@@ -82,3 +82,7 @@ Set these environment variables in Render:
 ONECLOUD_BASE_URL=<your OneCloud Render URL>
 GTAX_BASE_URL=<your GTAX Render URL>
 ```
+
+## EC2
+
+For EC2 deployment with systemd, see [EC2_DEPLOYMENT.md](EC2_DEPLOYMENT.md).
