@@ -1,0 +1,61 @@
+# Internal Provisioning API
+
+Jenkins-facing FastAPI middleware that brokers validation environment provisioning across OneCloud and GTAX-style provider APIs.
+
+Jenkins calls this service with a validation scenario. The middleware resolves the scenario, queries the correct provider API, filters eligible team-tagged machines, creates a reservation, triggers image deployment, tracks normalized status, and exposes a polling endpoint.
+
+## Endpoints
+
+```text
+GET  /health
+GET  /scenarios
+GET  /machines
+POST /provision
+GET  /provision/{request_id}/status
+POST /reservations/{reservation_id}/release
+```
+
+## Environment Variables
+
+```text
+ONECLOUD_BASE_URL=https://dummy-onecloud-api.onrender.com
+GTAX_BASE_URL=https://dummy-gtax-api.onrender.com
+PROVISION_POLL_INTERVAL_SECONDS=2
+PROVISION_TIMEOUT_SECONDS=300
+```
+
+## Local Run
+
+```bash
+pip install -r requirements.txt
+uvicorn app:app --host 0.0.0.0 --port 8080
+```
+
+## Example Request
+
+```bash
+curl -X POST http://localhost:8080/provision \
+  -H "Content-Type: application/json" \
+  -d '{"test_scenario":"dpcpp-adl-win11-validation","team":"oneapi","jenkins_build_id":"12345","duration_hours":4}'
+```
+
+Then poll:
+
+```bash
+curl http://localhost:8080/provision/<request_id>/status
+```
+
+## Render
+
+```text
+Build Command: pip install -r requirements.txt
+Start Command: uvicorn app:app --host 0.0.0.0 --port $PORT
+Health Check Path: /health
+```
+
+Set these environment variables in Render:
+
+```text
+ONECLOUD_BASE_URL=<your OneCloud Render URL>
+GTAX_BASE_URL=<your GTAX Render URL>
+```

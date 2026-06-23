@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: internal-provisioning-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: ONECLOUD_BASE_URL
+        sync: false
+      - key: GTAX_BASE_URL
+        sync: false
