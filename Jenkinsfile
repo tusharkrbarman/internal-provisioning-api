@@ -95,6 +95,7 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
                     }
 
                     env.SELECTED_SCENARIO = scenario.toString()
+                    writeFile file: 'selected_scenario.txt', text: env.SELECTED_SCENARIO
                     echo "Selected scenario: ${env.SELECTED_SCENARIO}"
                 }
             }
@@ -134,6 +135,8 @@ Choose one of the supported combinations defined in the Jenkinsfile scenarioMap.
         stage('Provision Environment') {
             steps {
                 script {
+                    env.SELECTED_SCENARIO = readFile('selected_scenario.txt').trim()
+
                     if (!env.SELECTED_SCENARIO?.trim() || env.SELECTED_SCENARIO == 'null') {
                         error "Selected scenario is empty. Check TEST_OPTION=${params.TEST_OPTION}, PLATFORM=${params.PLATFORM}, OS=${params.OS}"
                     }
