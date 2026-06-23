@@ -84,6 +84,22 @@ class ReleaseResponse(BaseModel):
     message: str
 
 
+class ProviderHealth(BaseModel):
+    provider: Provider
+    base_url: str
+    reachable: bool
+    status_code: int | None = None
+    error: str | None = None
+
+
+class ProviderApiError(RuntimeError):
+    def __init__(self, provider: Provider, operation: str, message: str) -> None:
+        super().__init__(message)
+        self.provider = provider
+        self.operation = operation
+        self.message = message
+
+
 SCENARIOS: dict[str, ScenarioConfig] = {
     "dpcpp-adl-win11-validation": ScenarioConfig(
         provider=Provider.ONECLOUD,
@@ -140,6 +156,7 @@ PROVIDER_URLS = {
     Provider.ONECLOUD: os.getenv("ONECLOUD_BASE_URL", "https://dummy-onecloud-api.onrender.com").rstrip("/"),
     Provider.GTAX: os.getenv("GTAX_BASE_URL", "https://dummy-gtax-api.onrender.com").rstrip("/"),
 }
+PROVIDER_REQUEST_TIMEOUT_SECONDS = float(os.getenv("PROVIDER_REQUEST_TIMEOUT_SECONDS", "10"))
 POLL_INTERVAL_SECONDS = float(os.getenv("PROVISION_POLL_INTERVAL_SECONDS", "2"))
 PROVISION_TIMEOUT_SECONDS = float(os.getenv("PROVISION_TIMEOUT_SECONDS", "300"))
 
@@ -162,17 +179,37 @@ def health() -> dict[str, object]:
     }
 
 
+@app.get("/provider-health", response_model=list[ProviderHealth])
+def provider_health() -> list[ProviderHealth]:
+    return [check_provider_health(provider) for provider in Provider]
+
+
 @app.get("/scenarios", response_model=dict[str, ScenarioConfig])
 def list_scenarios() -> dict[str, ScenarioConfig]:
     return SCENARIOS
 
 
 @app.get("/machines", response_model=list[Machine])
-def list_machines(provider: Provider | None = None) -> list[Machine]:
+def list_machines(provider: Provider | None = None, allow_partial: bool = False) -> list[Machine]:
     providers = [provider] if provider else [Provider.ONECLOUD, Provider.GTAX]
     machines: list[Machine] = []
+    errors: list[str] = []
     for selected_provider in providers:
-        machines.extend(fetch_machines(selected_provider))
+        try:
+            machines.extend(fetch_machines(selected_provider))
+        except ProviderApiError as exc:
+            errors.append(f"{exc.provider.value}: {exc.message}")
+
+    if errors and not allow_partial:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "One or more provider APIs could not be reached.",
+                "errors": errors,
+                "hint": "Call /provider-health or retry with /machines?allow_partial=true.",
+            },
+        )
+
     return machines
 
 
@@ -209,25 +246,35 @@ def get_status(request_id: str) -> ProvisionRecord:
 @app.post("/reservations/{reservation_id}/release", response_model=ReleaseResponse)
 def release_reservation(reservation_id: str) -> ReleaseResponse:
     match = find_record_by_reservation(reservation_id)
-    if match is None:
-        raise HTTPException(status_code=404, detail="Reservation not found")
+    request_id: str | None = None
+    provider: Provider | None = None
 
-    request_id, record = match
-    if record.provider is None:
-        raise HTTPException(status_code=400, detail="Reservation provider is missing")
+    if match is not None:
+        request_id, record = match
+        provider = record.provider
+    else:
+        provider = infer_provider_from_reservation_id(reservation_id)
+
+    if provider is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Reservation not found and provider could not be inferred from reservation ID",
+        )
 
     try:
-        with httpx.Client(timeout=20) as client:
-            response = client.post(f"{PROVIDER_URLS[record.provider]}/reservations/{reservation_id}/release")
+        with httpx.Client(timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS) as client:
+            response = client.post(f"{PROVIDER_URLS[provider]}/reservations/{reservation_id}/release")
             response.raise_for_status()
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Provider release failed: {exc}") from exc
 
-    update_record(
-        request_id,
-        status=ProvisionStatus.RELEASED,
-        message="Reservation released.",
-    )
+    if request_id is not None:
+        update_record(
+            request_id,
+            status=ProvisionStatus.RELEASED,
+            message="Reservation released.",
+        )
+
     return ReleaseResponse(
         reservation_id=reservation_id,
         status=ProvisionStatus.RELEASED,
@@ -292,6 +339,13 @@ def run_provisioning_workflow(request_id: str, request: ProvisionRequest) -> Non
             message="Provider API call failed.",
             failure_reason=str(exc),
         )
+    except ProviderApiError as exc:
+        update_record(
+            request_id,
+            status=ProvisionStatus.FAILED,
+            message=f"{exc.provider.value} provider {exc.operation} failed.",
+            failure_reason=exc.message,
+        )
     except Exception as exc:
         update_record(
             request_id,
@@ -302,10 +356,19 @@ def run_provisioning_workflow(request_id: str, request: ProvisionRequest) -> Non
 
 
 def fetch_machines(provider: Provider) -> list[Machine]:
-    with httpx.Client(timeout=20) as client:
-        response = client.get(f"{PROVIDER_URLS[provider]}/machines")
-        response.raise_for_status()
-        return [Machine.model_validate(machine) for machine in response.json()]
+    try:
+        with httpx.Client(timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS) as client:
+            response = client.get(f"{PROVIDER_URLS[provider]}/machines")
+            response.raise_for_status()
+            return [Machine.model_validate(machine) for machine in response.json()]
+    except httpx.HTTPStatusError as exc:
+        raise ProviderApiError(
+            provider,
+            "machine discovery",
+            f"HTTP {exc.response.status_code}: {exc.response.text}",
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise ProviderApiError(provider, "machine discovery", str(exc)) from exc
 
 
 def select_machine(scenario: ScenarioConfig, team: str) -> Machine | None:
@@ -339,30 +402,45 @@ def create_provider_reservation(
         "duration_hours": duration_hours,
         "jenkins_build_id": jenkins_build_id,
     }
-    with httpx.Client(timeout=20) as client:
-        response = client.post(f"{PROVIDER_URLS[provider]}/reservations", json=payload)
-        response.raise_for_status()
-        return str(response.json()["reservation_id"])
+    try:
+        with httpx.Client(timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS) as client:
+            response = client.post(f"{PROVIDER_URLS[provider]}/reservations", json=payload)
+            response.raise_for_status()
+            return str(response.json()["reservation_id"])
+    except httpx.HTTPStatusError:
+        raise
+    except httpx.HTTPError as exc:
+        raise ProviderApiError(provider, "reservation creation", str(exc)) from exc
 
 
 def deploy_provider_image(provider: Provider, machine_id: str, image: str) -> str:
-    with httpx.Client(timeout=20) as client:
-        response = client.post(
-            f"{PROVIDER_URLS[provider]}/machines/{machine_id}/deploy-image",
-            json={"image": image},
-        )
-        response.raise_for_status()
-        return str(response.json()["deployment_id"])
+    try:
+        with httpx.Client(timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS) as client:
+            response = client.post(
+                f"{PROVIDER_URLS[provider]}/machines/{machine_id}/deploy-image",
+                json={"image": image},
+            )
+            response.raise_for_status()
+            return str(response.json()["deployment_id"])
+    except httpx.HTTPStatusError:
+        raise
+    except httpx.HTTPError as exc:
+        raise ProviderApiError(provider, "image deployment", str(exc)) from exc
 
 
 def wait_for_deployment(request_id: str, provider: Provider, deployment_id: str) -> None:
     deadline = time.monotonic() + PROVISION_TIMEOUT_SECONDS
 
     while time.monotonic() < deadline:
-        with httpx.Client(timeout=20) as client:
-            response = client.get(f"{PROVIDER_URLS[provider]}/deployments/{deployment_id}/status")
-            response.raise_for_status()
-            provider_status = ProviderDeploymentStatus(response.json()["status"])
+        try:
+            with httpx.Client(timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS) as client:
+                response = client.get(f"{PROVIDER_URLS[provider]}/deployments/{deployment_id}/status")
+                response.raise_for_status()
+                provider_status = ProviderDeploymentStatus(response.json()["status"])
+        except httpx.HTTPStatusError:
+            raise
+        except httpx.HTTPError as exc:
+            raise ProviderApiError(provider, "deployment status polling", str(exc)) from exc
 
         if provider_status == ProviderDeploymentStatus.READY:
             update_record(
@@ -406,3 +484,31 @@ def find_record_by_reservation(reservation_id: str) -> tuple[str, ProvisionRecor
         if record.reservation_id == reservation_id:
             return request_id, record
     return None
+
+
+def infer_provider_from_reservation_id(reservation_id: str) -> Provider | None:
+    if reservation_id.startswith("onecloud-res-"):
+        return Provider.ONECLOUD
+    if reservation_id.startswith("gtax-res-"):
+        return Provider.GTAX
+    return None
+
+
+def check_provider_health(provider: Provider) -> ProviderHealth:
+    try:
+        with httpx.Client(timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS) as client:
+            response = client.get(f"{PROVIDER_URLS[provider]}/health")
+        return ProviderHealth(
+            provider=provider,
+            base_url=PROVIDER_URLS[provider],
+            reachable=response.is_success,
+            status_code=response.status_code,
+            error=None if response.is_success else response.text,
+        )
+    except httpx.HTTPError as exc:
+        return ProviderHealth(
+            provider=provider,
+            base_url=PROVIDER_URLS[provider],
+            reachable=False,
+            error=str(exc),
+        )

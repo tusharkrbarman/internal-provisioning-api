@@ -8,6 +8,7 @@ Jenkins calls this service with a validation scenario. The middleware resolves t
 
 ```text
 GET  /health
+GET  /provider-health
 GET  /scenarios
 GET  /machines
 POST /provision
@@ -43,6 +44,20 @@ Then poll:
 
 ```bash
 curl http://localhost:8080/provision/<request_id>/status
+```
+
+## Provider Diagnostics
+
+Check whether the middleware can reach OneCloud and GTAX:
+
+```bash
+curl http://localhost:8080/provider-health
+```
+
+If one provider is asleep or temporarily unavailable, `/machines` returns a controlled `502` with provider details instead of a raw server error. To return machines from reachable providers only:
+
+```bash
+curl "http://localhost:8080/machines?allow_partial=true"
 ```
 
 ## Jenkins Parameterized Pipeline
