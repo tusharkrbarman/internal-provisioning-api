@@ -60,6 +60,20 @@ If one provider is asleep or temporarily unavailable, `/machines` returns a cont
 curl "http://localhost:8080/machines?allow_partial=true"
 ```
 
+## Provisioning Policy
+
+The middleware uses this provider-selection policy:
+
+```text
+Package Validation -> GTAX CaaS
+Static Analysis    -> GTAX CaaS
+All other scenarios -> OneCloud
+```
+
+For GTAX CaaS scenarios, the middleware selects an available, clean, team-tagged CaaS machine.
+
+For OneCloud scenarios, the middleware selects any available, clean, team-tagged OneCloud machine. It does not require an exact platform or OS match. If the scenario image is not supported by the selected machine, the middleware uses the first supported image for that machine.
+
 ## Jenkins Parameterized Pipeline
 
 This repo includes a `Jenkinsfile` that shows a parameterized Jenkins pipeline. When you run the job, Jenkins shows options such as:

@@ -145,11 +145,11 @@ SCENARIOS: dict[str, ScenarioConfig] = {
         workload_type="caas",
     ),
     "oneapi-vm-smoke-validation": ScenarioConfig(
-        provider=Provider.GTAX,
-        platform="vm",
-        os="ubuntu-24.04",
-        image="oneapi-vm-smoke",
-        workload_type="vm",
+        provider=Provider.ONECLOUD,
+        platform="any",
+        os="any",
+        image="onecloud-default-validation",
+        workload_type="hardware",
     ),
 }
 
@@ -326,6 +326,7 @@ def run_provisioning_workflow(request_id: str, request: ProvisionRequest) -> Non
             )
             return
 
+        deployment_image = choose_deployment_image(scenario, machine)
         reservation_id = create_provider_reservation(
             provider=scenario.provider,
             machine_id=machine.machine_id,
@@ -337,6 +338,7 @@ def run_provisioning_workflow(request_id: str, request: ProvisionRequest) -> Non
             request_id,
             reservation_id=reservation_id,
             machine_id=machine.machine_id,
+            image=deployment_image,
             status=ProvisionStatus.IMAGE_DEPLOYING,
             message="Reservation created. Triggering image deployment.",
         )
@@ -344,7 +346,7 @@ def run_provisioning_workflow(request_id: str, request: ProvisionRequest) -> Non
         deployment_id = deploy_provider_image(
             provider=scenario.provider,
             machine_id=machine.machine_id,
-            image=scenario.image,
+            image=deployment_image,
         )
         wait_for_deployment(request_id, scenario.provider, deployment_id)
 
@@ -405,14 +407,32 @@ def select_machine(scenario: ScenarioConfig, team: str) -> Machine | None:
             continue
         if team not in machine.team_tags:
             continue
+
+        if scenario.provider == Provider.GTAX and scenario.workload_type == "caas":
+            if machine.platform != "caas":
+                continue
+            if not machine.supported_images:
+                continue
+            return machine
+
+        if scenario.provider == Provider.ONECLOUD:
+            if not machine.supported_images:
+                continue
+            return machine
+
         if machine.platform != scenario.platform:
             continue
-        if machine.os != scenario.os:
-            continue
-        if scenario.image not in machine.supported_images:
-            continue
         return machine
+
     return None
+
+
+def choose_deployment_image(scenario: ScenarioConfig, machine: Machine) -> str:
+    if scenario.image in machine.supported_images:
+        return scenario.image
+    if machine.supported_images:
+        return machine.supported_images[0]
+    return scenario.image
 
 
 def create_provider_reservation(
