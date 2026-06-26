@@ -2,3 +2,9 @@
 __pycache__/
 *.py[cod]
 .env
+.terraform/
+terraform.tfstate
+terraform.tfstate.*
+terraform/*.tfvars
+!terraform/*.tfvars.example
+tfplan

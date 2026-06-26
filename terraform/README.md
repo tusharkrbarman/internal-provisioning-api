@@ -2,6 +2,8 @@
 
 This folder defines the production-style AWS infrastructure for the internal provisioning middleware API.
 
+For the GitHub Actions infrastructure pipeline, see [INFRA_PIPELINE.md](INFRA_PIPELINE.md).
+
 It creates:
 
 - ECR repository for the API image
