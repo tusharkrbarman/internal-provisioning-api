@@ -53,6 +53,30 @@ pip install -r requirements.txt
 uvicorn app:app --host 0.0.0.0 --port 8080
 ```
 
+## Docker Run
+
+Build the middleware API container:
+
+```bash
+docker build -t internal-provisioning-api .
+```
+
+Run it locally:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e PROVISION_STORE=memory \
+  -e ONECLOUD_BASE_URL=https://dummy-onecloud-api.onrender.com \
+  -e GTAX_BASE_URL=https://dummy-gtax-api.onrender.com \
+  internal-provisioning-api
+```
+
+Check the container:
+
+```bash
+curl http://localhost:8080/health
+```
+
 ## Example Request
 
 ```bash
