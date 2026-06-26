@@ -26,7 +26,21 @@ GTAX_BASE_URL=https://dummy-gtax-api.onrender.com
 PROVIDER_REQUEST_TIMEOUT_SECONDS=60
 PROVISION_POLL_INTERVAL_SECONDS=2
 PROVISION_TIMEOUT_SECONDS=300
+LOG_LEVEL=INFO
+PROVISION_STORE=memory
+PROVISION_RECORD_TTL_HOURS=48
+PROVISION_DYNAMODB_TABLE=internal-provisioning-requests
+PROVISION_DYNAMODB_RESERVATION_ID_INDEX=reservation_id-index
 ```
+
+For production on ECS/Fargate, set `PROVISION_STORE=dynamodb` and create a DynamoDB table with:
+
+```text
+Partition key: request_id (String)
+GSI: reservation_id-index with reservation_id (String) as partition key
+```
+
+The API derives `request_id` from the idempotency key, then uses a DynamoDB conditional write to prevent duplicate reservations during Jenkins retries. It writes structured JSON logs to stdout so ECS can ship them directly to CloudWatch Logs.
 
 ## Local Run
 

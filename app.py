@@ -1,16 +1,94 @@
 from __future__ import annotations
 
 import os
+import json
+import logging
+import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Literal
-from uuid import uuid4
+from typing import Any, Literal
+from uuid import NAMESPACE_URL, uuid5
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
+
+
+SERVICE_NAME = os.getenv("SERVICE_NAME", "internal-provisioning-api")
+
+
+class JsonLogFormatter(logging.Formatter):
+    reserved_keys = {
+        "args",
+        "asctime",
+        "created",
+        "exc_info",
+        "exc_text",
+        "filename",
+        "funcName",
+        "levelname",
+        "levelno",
+        "lineno",
+        "module",
+        "msecs",
+        "message",
+        "msg",
+        "name",
+        "pathname",
+        "process",
+        "processName",
+        "relativeCreated",
+        "stack_info",
+        "taskName",
+        "thread",
+        "threadName",
+    }
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "level": record.levelname,
+            "service": SERVICE_NAME,
+            "event": record.getMessage(),
+        }
+
+        for key, value in record.__dict__.items():
+            if key in self.reserved_keys or key.startswith("_"):
+                continue
+            payload[key] = serialize_log_value(value)
+
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+
+        return json.dumps(payload, separators=(",", ":"))
+
+
+def serialize_log_value(value: Any) -> Any:
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+    return value
+
+
+def configure_logging() -> logging.Logger:
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(JsonLogFormatter())
+
+    service_logger = logging.getLogger(SERVICE_NAME)
+    service_logger.handlers.clear()
+    service_logger.addHandler(handler)
+    service_logger.setLevel(log_level)
+    service_logger.propagate = False
+    return service_logger
+
+
+logger = configure_logging()
 
 
 class Provider(str, Enum):
@@ -65,6 +143,7 @@ class Machine(BaseModel):
 
 class ProvisionRecord(BaseModel):
     request_id: str
+    idempotency_key: str
     test_scenario: str
     team: str
     jenkins_build_id: str
@@ -77,6 +156,7 @@ class ProvisionRecord(BaseModel):
     failure_reason: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: datetime | None = None
 
 
 class ReleaseResponse(BaseModel):
@@ -99,6 +179,130 @@ class ProviderApiError(RuntimeError):
         self.provider = provider
         self.operation = operation
         self.message = message
+
+
+class ProvisionStore:
+    store_type = "base"
+
+    def create_or_get(self, record: ProvisionRecord) -> tuple[ProvisionRecord, bool]:
+        raise NotImplementedError
+
+    def get(self, request_id: str) -> ProvisionRecord | None:
+        raise NotImplementedError
+
+    def update(self, request_id: str, **changes: object) -> ProvisionRecord:
+        raise NotImplementedError
+
+    def find_by_reservation(self, reservation_id: str) -> tuple[str, ProvisionRecord] | None:
+        raise NotImplementedError
+
+
+class InMemoryProvisionStore(ProvisionStore):
+    store_type = "memory"
+
+    def __init__(self) -> None:
+        self.records: dict[str, ProvisionRecord] = {}
+        self.idempotency_index: dict[str, str] = {}
+
+    def create_or_get(self, record: ProvisionRecord) -> tuple[ProvisionRecord, bool]:
+        existing_request_id = self.idempotency_index.get(record.idempotency_key)
+        if existing_request_id is not None:
+            return self.records[existing_request_id], False
+
+        self.records[record.request_id] = record
+        self.idempotency_index[record.idempotency_key] = record.request_id
+        return record, True
+
+    def get(self, request_id: str) -> ProvisionRecord | None:
+        return self.records.get(request_id)
+
+    def update(self, request_id: str, **changes: object) -> ProvisionRecord:
+        record = self.records[request_id]
+        updated = record.model_copy(
+            update={
+                **changes,
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+        self.records[request_id] = updated
+        return updated
+
+    def find_by_reservation(self, reservation_id: str) -> tuple[str, ProvisionRecord] | None:
+        for request_id, record in self.records.items():
+            if record.reservation_id == reservation_id:
+                return request_id, record
+        return None
+
+
+class DynamoDbProvisionStore(ProvisionStore):
+    store_type = "dynamodb"
+
+    def __init__(
+        self,
+        table_name: str,
+        region_name: str | None = None,
+        reservation_id_index: str = "reservation_id-index",
+    ) -> None:
+        try:
+            import boto3
+            from botocore.exceptions import ClientError
+            from boto3.dynamodb.conditions import Key
+        except ImportError as exc:
+            raise RuntimeError("Install boto3 to use PROVISION_STORE=dynamodb") from exc
+
+        self.client_error = ClientError
+        self.key_condition = Key
+        self.table = boto3.resource("dynamodb", region_name=region_name).Table(table_name)
+        self.reservation_id_index = reservation_id_index
+
+    def create_or_get(self, record: ProvisionRecord) -> tuple[ProvisionRecord, bool]:
+        item = record.model_dump(mode="json", exclude_none=True)
+        try:
+            self.table.put_item(
+                Item=item,
+                ConditionExpression="attribute_not_exists(request_id)",
+            )
+            return record, True
+        except self.client_error as exc:
+            if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
+                raise
+
+            response = self.table.get_item(Key={"request_id": record.request_id})
+            return ProvisionRecord.model_validate(response["Item"]), False
+
+    def get(self, request_id: str) -> ProvisionRecord | None:
+        response = self.table.get_item(Key={"request_id": request_id})
+        item = response.get("Item")
+        if item is None:
+            return None
+        return ProvisionRecord.model_validate(item)
+
+    def update(self, request_id: str, **changes: object) -> ProvisionRecord:
+        record = self.get(request_id)
+        if record is None:
+            raise KeyError(request_id)
+
+        updated = record.model_copy(
+            update={
+                **changes,
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+        self.table.put_item(Item=updated.model_dump(mode="json", exclude_none=True))
+        return updated
+
+    def find_by_reservation(self, reservation_id: str) -> tuple[str, ProvisionRecord] | None:
+        response = self.table.query(
+            IndexName=self.reservation_id_index,
+            KeyConditionExpression=self.key_condition("reservation_id").eq(reservation_id),
+            Limit=1,
+        )
+        items = response.get("Items", [])
+        if not items:
+            return None
+
+        record = ProvisionRecord.model_validate(items[0])
+        return record.request_id, record
 
 
 SCENARIOS: dict[str, ScenarioConfig] = {
@@ -160,8 +364,26 @@ PROVIDER_URLS = {
 PROVIDER_REQUEST_TIMEOUT_SECONDS = float(os.getenv("PROVIDER_REQUEST_TIMEOUT_SECONDS", "60"))
 POLL_INTERVAL_SECONDS = float(os.getenv("PROVISION_POLL_INTERVAL_SECONDS", "2"))
 PROVISION_TIMEOUT_SECONDS = float(os.getenv("PROVISION_TIMEOUT_SECONDS", "300"))
+PROVISION_RECORD_TTL_HOURS = int(os.getenv("PROVISION_RECORD_TTL_HOURS", "48"))
+PROVISION_STORE = os.getenv("PROVISION_STORE", "memory").lower()
+DYNAMODB_TABLE_NAME = os.getenv("PROVISION_DYNAMODB_TABLE", "internal-provisioning-requests")
+DYNAMODB_RESERVATION_ID_INDEX = os.getenv("PROVISION_DYNAMODB_RESERVATION_ID_INDEX", "reservation_id-index")
+AWS_REGION = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
 
-records: dict[str, ProvisionRecord] = {}
+
+def create_provision_store() -> ProvisionStore:
+    if PROVISION_STORE == "memory":
+        return InMemoryProvisionStore()
+    if PROVISION_STORE == "dynamodb":
+        return DynamoDbProvisionStore(
+            table_name=DYNAMODB_TABLE_NAME,
+            region_name=AWS_REGION,
+            reservation_id_index=DYNAMODB_RESERVATION_ID_INDEX,
+        )
+    raise RuntimeError(f"Unsupported PROVISION_STORE={PROVISION_STORE}")
+
+
+store = create_provision_store()
 
 app = FastAPI(
     title="Internal Provisioning API",
@@ -174,6 +396,8 @@ app = FastAPI(
 def health() -> dict[str, object]:
     return {
         "status": "ok",
+        "service": SERVICE_NAME,
+        "store": store.store_type,
         "providers": {
             provider.value: url for provider, url in PROVIDER_URLS.items()
         },
@@ -215,27 +439,38 @@ def list_machines(provider: Provider | None = None, allow_partial: bool = False)
 
 
 @app.post("/provision", response_model=ProvisionRecord, status_code=202)
-def provision(request: ProvisionRequest, background_tasks: BackgroundTasks) -> ProvisionRecord:
-    return create_provisioning_request(request, background_tasks)
+def provision(
+    request: ProvisionRequest,
+    background_tasks: BackgroundTasks,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> ProvisionRecord:
+    return create_provisioning_request(request, background_tasks, idempotency_key)
 
 
 @app.post("/provision/request-id", response_class=PlainTextResponse, status_code=202)
-def provision_request_id(request: ProvisionRequest, background_tasks: BackgroundTasks) -> str:
-    record = create_provisioning_request(request, background_tasks)
+def provision_request_id(
+    request: ProvisionRequest,
+    background_tasks: BackgroundTasks,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> str:
+    record = create_provisioning_request(request, background_tasks, idempotency_key)
     return record.request_id
 
 
 def create_provisioning_request(
     request: ProvisionRequest,
     background_tasks: BackgroundTasks,
+    supplied_idempotency_key: str | None = None,
 ) -> ProvisionRecord:
     scenario = SCENARIOS.get(request.test_scenario)
     if scenario is None:
         raise HTTPException(status_code=400, detail=f"Unknown test scenario: {request.test_scenario}")
 
-    request_id = str(uuid4())
+    idempotency_key = normalize_idempotency_key(request, supplied_idempotency_key)
+    request_id = request_id_from_idempotency_key(idempotency_key)
     record = ProvisionRecord(
         request_id=request_id,
+        idempotency_key=idempotency_key,
         test_scenario=request.test_scenario,
         team=request.team,
         jenkins_build_id=request.jenkins_build_id,
@@ -243,15 +478,28 @@ def create_provisioning_request(
         message="Provisioning request accepted.",
         provider=scenario.provider,
         image=scenario.image,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=PROVISION_RECORD_TTL_HOURS),
     )
-    records[request_id] = record
-    background_tasks.add_task(run_provisioning_workflow, request_id, request)
-    return record
+    stored_record, created = store.create_or_get(record)
+
+    if created:
+        logger.info(
+            "provision.request.accepted",
+            extra=record_log_context(stored_record),
+        )
+        background_tasks.add_task(run_provisioning_workflow, stored_record.request_id, request)
+    else:
+        logger.info(
+            "provision.request.reused",
+            extra=record_log_context(stored_record),
+        )
+
+    return stored_record
 
 
 @app.get("/provision/{request_id}/status", response_model=ProvisionRecord)
 def get_status(request_id: str) -> ProvisionRecord:
-    record = records.get(request_id)
+    record = store.get(request_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Provisioning request not found")
     return record
@@ -274,10 +522,21 @@ def release_reservation(reservation_id: str) -> ReleaseResponse:
     match = find_record_by_reservation(reservation_id)
     request_id: str | None = None
     provider: Provider | None = None
+    record: ProvisionRecord | None = None
 
     if match is not None:
         request_id, record = match
         provider = record.provider
+        if record.status == ProvisionStatus.RELEASED:
+            logger.info(
+                "release.already_completed",
+                extra=record_log_context(record),
+            )
+            return ReleaseResponse(
+                reservation_id=reservation_id,
+                status=ProvisionStatus.RELEASED,
+                message="Reservation already released.",
+            )
     else:
         provider = infer_provider_from_reservation_id(reservation_id)
 
@@ -287,19 +546,48 @@ def release_reservation(reservation_id: str) -> ReleaseResponse:
             detail="Reservation not found and provider could not be inferred from reservation ID",
         )
 
+    logger.info(
+        "release.requested",
+        extra={
+            "request_id": request_id,
+            "reservation_id": reservation_id,
+            "provider": provider.value,
+        },
+    )
+
     try:
         with httpx.Client(timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS) as client:
             response = client.post(f"{PROVIDER_URLS[provider]}/reservations/{reservation_id}/release")
             response.raise_for_status()
     except httpx.HTTPError as exc:
+        logger.error(
+            "release.failed",
+            extra={
+                "request_id": request_id,
+                "reservation_id": reservation_id,
+                "provider": provider.value,
+                "failure_reason": str(exc),
+            },
+        )
         raise HTTPException(status_code=502, detail=f"Provider release failed: {exc}") from exc
 
     if request_id is not None:
-        update_record(
+        record = update_record(
             request_id,
             status=ProvisionStatus.RELEASED,
             message="Reservation released.",
         )
+
+    logger.info(
+        "release.completed",
+        extra=record_log_context(record)
+        if record is not None
+        else {
+            "request_id": request_id,
+            "reservation_id": reservation_id,
+            "provider": provider.value,
+        },
+    )
 
     return ReleaseResponse(
         reservation_id=reservation_id,
@@ -312,6 +600,17 @@ def run_provisioning_workflow(request_id: str, request: ProvisionRequest) -> Non
     scenario = SCENARIOS[request.test_scenario]
 
     try:
+        logger.info(
+            "scenario.resolved",
+            extra={
+                "request_id": request_id,
+                "test_scenario": request.test_scenario,
+                "jenkins_build_id": request.jenkins_build_id,
+                "team": request.team,
+                "provider": scenario.provider.value,
+                "image": scenario.image,
+            },
+        )
         update_record(
             request_id,
             status=ProvisionStatus.RESERVATION_PENDING,
@@ -415,15 +714,48 @@ def select_machine(scenario: ScenarioConfig, team: str) -> Machine | None:
                 continue
             if scenario.image not in machine.supported_images:
                 continue
+            logger.info(
+                "machine.selected",
+                extra={
+                    "provider": scenario.provider.value,
+                    "machine_id": machine.machine_id,
+                    "platform": machine.platform,
+                    "os": machine.os,
+                    "image": scenario.image,
+                    "team": team,
+                },
+            )
             return machine
 
         if scenario.provider == Provider.ONECLOUD:
             if not machine.supported_images:
                 continue
+            logger.info(
+                "machine.selected",
+                extra={
+                    "provider": scenario.provider.value,
+                    "machine_id": machine.machine_id,
+                    "platform": machine.platform,
+                    "os": machine.os,
+                    "image": choose_deployment_image(scenario, machine),
+                    "team": team,
+                },
+            )
             return machine
 
         if machine.platform != scenario.platform:
             continue
+        logger.info(
+            "machine.selected",
+            extra={
+                "provider": scenario.provider.value,
+                "machine_id": machine.machine_id,
+                "platform": machine.platform,
+                "os": machine.os,
+                "image": scenario.image,
+                "team": team,
+            },
+        )
         return machine
 
     return None
@@ -454,7 +786,18 @@ def create_provider_reservation(
         with httpx.Client(timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS) as client:
             response = client.post(f"{PROVIDER_URLS[provider]}/reservations", json=payload)
             response.raise_for_status()
-            return str(response.json()["reservation_id"])
+            reservation_id = str(response.json()["reservation_id"])
+            logger.info(
+                "reservation.created",
+                extra={
+                    "provider": provider.value,
+                    "reservation_id": reservation_id,
+                    "machine_id": machine_id,
+                    "team": team,
+                    "jenkins_build_id": jenkins_build_id,
+                },
+            )
+            return reservation_id
     except httpx.HTTPStatusError:
         raise
     except httpx.HTTPError as exc:
@@ -469,7 +812,17 @@ def deploy_provider_image(provider: Provider, machine_id: str, image: str) -> st
                 json={"image": image},
             )
             response.raise_for_status()
-            return str(response.json()["deployment_id"])
+            deployment_id = str(response.json()["deployment_id"])
+            logger.info(
+                "image.deployment.started",
+                extra={
+                    "provider": provider.value,
+                    "machine_id": machine_id,
+                    "image": image,
+                    "deployment_id": deployment_id,
+                },
+            )
+            return deployment_id
     except httpx.HTTPStatusError:
         raise
     except httpx.HTTPError as exc:
@@ -516,22 +869,16 @@ def wait_for_deployment(request_id: str, provider: Provider, deployment_id: str)
 
 
 def update_record(request_id: str, **changes: object) -> ProvisionRecord:
-    record = records[request_id]
-    updated = record.model_copy(
-        update={
-            **changes,
-            "updated_at": datetime.now(timezone.utc),
-        }
+    updated = store.update(request_id, **changes)
+    logger.info(
+        "provision.status.updated",
+        extra=record_log_context(updated),
     )
-    records[request_id] = updated
     return updated
 
 
 def find_record_by_reservation(reservation_id: str) -> tuple[str, ProvisionRecord] | None:
-    for request_id, record in records.items():
-        if record.reservation_id == reservation_id:
-            return request_id, record
-    return None
+    return store.find_by_reservation(reservation_id)
 
 
 def infer_provider_from_reservation_id(reservation_id: str) -> Provider | None:
@@ -564,3 +911,38 @@ def check_provider_health(provider: Provider) -> ProviderHealth:
 
 def safe_status_field(value: str) -> str:
     return value.replace("|", "/").replace("\n", " ").replace("\r", " ")
+
+
+def normalize_idempotency_key(
+    request: ProvisionRequest,
+    supplied_idempotency_key: str | None,
+) -> str:
+    if supplied_idempotency_key and supplied_idempotency_key.strip():
+        return supplied_idempotency_key.strip()
+
+    return "jenkins:{team}:{build}:{scenario}".format(
+        team=request.team,
+        build=request.jenkins_build_id,
+        scenario=request.test_scenario,
+    )
+
+
+def request_id_from_idempotency_key(idempotency_key: str) -> str:
+    return str(uuid5(NAMESPACE_URL, f"{SERVICE_NAME}:{idempotency_key}"))
+
+
+def record_log_context(record: ProvisionRecord) -> dict[str, Any]:
+    return {
+        "request_id": record.request_id,
+        "idempotency_key": record.idempotency_key,
+        "jenkins_build_id": record.jenkins_build_id,
+        "test_scenario": record.test_scenario,
+        "team": record.team,
+        "status": record.status.value,
+        "provider": record.provider.value if record.provider else None,
+        "reservation_id": record.reservation_id,
+        "machine_id": record.machine_id,
+        "image": record.image,
+        "status_message": record.message,
+        "failure_reason": record.failure_reason,
+    }
