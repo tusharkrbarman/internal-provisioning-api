@@ -1,0 +1,35 @@
+aws_region  = "ap-south-1"
+environment = "prod"
+name        = "internal-provisioning-api"
+
+vpc_id = "vpc-xxxxxxxxxxxxxxxxx"
+
+alb_subnet_ids = [
+  "subnet-xxxxxxxxxxxxxxxxx",
+  "subnet-yyyyyyyyyyyyyyyyy"
+]
+
+service_subnet_ids = [
+  "subnet-xxxxxxxxxxxxxxxxx",
+  "subnet-yyyyyyyyyyyyyyyyy"
+]
+
+# For your current public-subnet setup, keep this true.
+# In a stricter production VPC, set this false and place ECS in private subnets with NAT.
+assign_public_ip = true
+
+# Option A: use the ECR repo created by Terraform and push :latest after apply.
+image_tag = "latest"
+
+# Option B: point ECS to an existing image URI instead.
+# container_image = "<account-id>.dkr.ecr.ap-south-1.amazonaws.com/internal-provisioning-api:latest"
+
+onecloud_base_url = "https://dummy-onecloud-api.onrender.com"
+gtax_base_url     = "https://dummy-gtax-api.onrender.com"
+
+desired_count      = 1
+log_retention_days = 30
+
+allowed_http_cidr_blocks = [
+  "0.0.0.0/0"
+]

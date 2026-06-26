@@ -159,3 +159,7 @@ GTAX_BASE_URL=<your GTAX Render URL>
 ## EC2
 
 For EC2 deployment with systemd, see [EC2_DEPLOYMENT.md](EC2_DEPLOYMENT.md).
+
+## Terraform
+
+For production-style AWS infrastructure as code, see [terraform/README.md](terraform/README.md).
