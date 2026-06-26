@@ -162,7 +162,7 @@ resource "aws_vpc_security_group_egress_rule" "service_all" {
 }
 
 resource "aws_lb" "api" {
-  name               = "${var.name}-alb"
+  name               = var.alb_name
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]

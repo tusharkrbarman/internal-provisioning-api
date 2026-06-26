@@ -1,6 +1,7 @@
 aws_region  = "ap-south-1"
 environment = "prod"
 name        = "internal-provisioning-api"
+alb_name    = "provisioning-api-alb"
 
 vpc_id = "vpc-xxxxxxxxxxxxxxxxx"
 

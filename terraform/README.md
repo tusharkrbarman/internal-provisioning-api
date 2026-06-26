@@ -26,6 +26,7 @@ Edit `terraform.tfvars` and set:
 - `vpc_id`
 - `alb_subnet_ids`
 - `service_subnet_ids`
+- optionally `alb_name` if you want a different public load balancer name
 - optionally `container_image` if you want to use an already-pushed ECR image
 
 For the current demo-style deployment, using the same public subnets for `alb_subnet_ids` and `service_subnet_ids` is acceptable.
@@ -87,7 +88,7 @@ terraform output -raw api_base_url
 Example Jenkins value:
 
 ```text
-http://internal-provisioning-api-alb-xxxxxxxx.ap-south-1.elb.amazonaws.com
+http://provisioning-api-alb-xxxxxxxx.ap-south-1.elb.amazonaws.com
 ```
 
 ## Existing Console-Created Resources

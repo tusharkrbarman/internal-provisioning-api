@@ -86,6 +86,7 @@ AWS_REGION=ap-south-1
 TF_STATE_BUCKET=internal-provisioning-api-tfstate-<account-id>
 TF_STATE_KEY=internal-provisioning-api/prod/terraform.tfstate
 TF_STATE_LOCK_TABLE=internal-provisioning-api-tf-locks
+TF_VAR_ALB_NAME=provisioning-api-alb
 TF_VAR_VPC_ID=vpc-xxxxxxxxxxxxxxxxx
 TF_VAR_ALB_SUBNET_IDS=["subnet-xxxxxxxxxxxxxxxxx","subnet-yyyyyyyyyyyyyyyyy"]
 TF_VAR_SERVICE_SUBNET_IDS=["subnet-xxxxxxxxxxxxxxxxx","subnet-yyyyyyyyyyyyyyyyy"]

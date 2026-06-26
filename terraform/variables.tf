@@ -10,6 +10,12 @@ variable "name" {
   default     = "internal-provisioning-api"
 }
 
+variable "alb_name" {
+  description = "Application Load Balancer name. AWS load balancer names cannot start with internal-."
+  type        = string
+  default     = "provisioning-api-alb"
+}
+
 variable "environment" {
   description = "Deployment environment name."
   type        = string
