@@ -136,7 +136,7 @@ data "aws_iam_policy_document" "github_deploy_assume_role" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = [
+      values = [
         "repo:${var.github_repository}:ref:refs/heads/main",
         "repo:${var.github_repository}:environment:${var.github_deploy_environment}"
       ]
@@ -158,8 +158,8 @@ data "aws_iam_policy_document" "github_deploy" {
   }
 
   statement {
-    sid       = "PushApiImage"
-    actions   = [
+    sid = "PushApiImage"
+    actions = [
       "ecr:BatchCheckLayerAvailability",
       "ecr:CompleteLayerUpload",
       "ecr:DescribeRepositories",
@@ -171,8 +171,8 @@ data "aws_iam_policy_document" "github_deploy" {
   }
 
   statement {
-    sid       = "ReadAndRegisterTaskDefinition"
-    actions   = [
+    sid = "ReadAndRegisterTaskDefinition"
+    actions = [
       "ecs:DescribeTaskDefinition",
       "ecs:RegisterTaskDefinition"
     ]
@@ -180,8 +180,8 @@ data "aws_iam_policy_document" "github_deploy" {
   }
 
   statement {
-    sid       = "DeployService"
-    actions   = [
+    sid = "DeployService"
+    actions = [
       "ecs:DescribeServices",
       "ecs:UpdateService"
     ]

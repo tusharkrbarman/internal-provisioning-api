@@ -66,7 +66,7 @@ jobs:
 
       - name: Terraform fmt
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform fmt -check -recursive
+        run: terraform fmt -diff -check -recursive
 
       - name: Terraform init
         working-directory: ${{ env.TF_WORKING_DIR }}
