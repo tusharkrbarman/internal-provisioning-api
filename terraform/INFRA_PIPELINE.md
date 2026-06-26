@@ -144,7 +144,47 @@ Push to main:
 Manual dispatch:
   runs plan
   applies only when apply=true and production approval is granted
+  destroys only when destroy=true, the confirmation text matches, and production approval is granted
 ```
+
+## Destroy Workflow
+
+Destroy is available only through manual workflow dispatch. It is intentionally not connected to pull requests or normal pushes.
+
+To destroy the Terraform-managed production infrastructure:
+
+```text
+GitHub -> Actions -> Terraform Infrastructure -> Run workflow
+apply=false
+destroy=true
+destroy_confirmation=destroy internal-provisioning-api
+```
+
+The destroy job still requires approval from the protected GitHub `production` environment before it can run.
+
+Destroy removes Terraform-managed resources such as:
+
+```text
+ECS service
+ECS cluster
+ALB
+Target group
+Security groups
+CloudWatch log group
+DynamoDB provisioning table
+ECR repository
+IAM roles created by Terraform
+```
+
+The Terraform backend resources are not destroyed by this workflow because they were bootstrapped separately:
+
+```text
+S3 state bucket
+DynamoDB Terraform lock table
+GitHub OIDC IAM role
+```
+
+Keep the backend until you are sure you no longer need the Terraform state.
 
 ## Interview Explanation
 
