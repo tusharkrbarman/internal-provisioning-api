@@ -38,7 +38,7 @@ env:
   TF_INPUT: false
   TF_IN_AUTOMATION: true
   TF_VAR_aws_region: ${{ vars.AWS_REGION }}
-  TF_VAR_alb_name: ${{ vars.TF_VAR_ALB_NAME }}
+  TF_VAR_alb_name: ${{ vars.TF_VAR_ALB_NAME || 'provisioning-api-alb' }}
   TF_VAR_vpc_id: ${{ vars.TF_VAR_VPC_ID }}
   TF_VAR_alb_subnet_ids: ${{ vars.TF_VAR_ALB_SUBNET_IDS }}
   TF_VAR_service_subnet_ids: ${{ vars.TF_VAR_SERVICE_SUBNET_IDS }}
