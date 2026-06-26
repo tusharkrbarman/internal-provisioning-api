@@ -30,6 +30,7 @@ Edit `terraform.tfvars` and set:
 - optionally `alb_name` if you want a different public load balancer name
 - optionally `container_image` if you want to use an already-pushed ECR image
 - optionally `github_repository` if this repo is forked or renamed
+- optionally `ecr_force_delete`; it defaults to `true` so the destroy workflow can remove the app ECR repo even after images are pushed
 
 For the current demo-style deployment, using the same public subnets for `alb_subnet_ids` and `service_subnet_ids` is acceptable.
 

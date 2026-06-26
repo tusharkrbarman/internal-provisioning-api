@@ -71,6 +71,12 @@ variable "ecr_repository_name" {
   default     = "internal-provisioning-api"
 }
 
+variable "ecr_force_delete" {
+  description = "Delete images automatically when destroying the app ECR repository."
+  type        = bool
+  default     = true
+}
+
 variable "container_image" {
   description = "Full container image URI. Leave empty to use the Terraform-created ECR repository plus image_tag."
   type        = string
