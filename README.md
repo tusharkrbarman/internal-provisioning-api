@@ -4,6 +4,10 @@ Jenkins-facing FastAPI middleware that brokers validation environment provisioni
 
 Jenkins calls this service with a validation scenario. The middleware resolves the scenario, queries the correct provider API, filters eligible team-tagged machines, creates a reservation, deploys the validation image, tracks normalized status, and exposes a polling endpoint. Once the API reports `READY`, Jenkins owns validation execution and calls the API again when it is time to release the machine.
 
+## Production Architecture
+
+![Production Architecture](docs/production-architecture.svg)
+
 ## Endpoints
 
 ```text

@@ -1,0 +1,101 @@
+<svg width="1400" height="900" viewBox="0 0 1400 900" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Internal Provisioning API production architecture</title>
+  <desc id="desc">Jenkins calls an Application Load Balancer, which routes to ECS Fargate tasks running the provisioning API. The API uses DynamoDB for state, calls OneCloud and GTAX providers, reads configuration from Secrets Manager, and writes logs to CloudWatch.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2 2 L10 6 L2 10 Z" fill="#334155"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+    <style>
+      .bg { fill: #f8fafc; }
+      .title { fill: #0f172a; font: 700 34px Arial, sans-serif; }
+      .subtitle { fill: #475569; font: 400 16px Arial, sans-serif; }
+      .label { fill: #0f172a; font: 700 18px Arial, sans-serif; }
+      .small { fill: #475569; font: 400 14px Arial, sans-serif; }
+      .tiny { fill: #64748b; font: 400 12px Arial, sans-serif; }
+      .box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 2; filter: url(#shadow); }
+      .aws { fill: #fff7ed; stroke: #fb923c; }
+      .state { fill: #eff6ff; stroke: #60a5fa; }
+      .provider { fill: #f0fdf4; stroke: #4ade80; }
+      .observability { fill: #f5f3ff; stroke: #a78bfa; }
+      .security { fill: #fefce8; stroke: #facc15; }
+      .line { stroke: #334155; stroke-width: 2.5; marker-end: url(#arrow); }
+      .dashed { stroke: #64748b; stroke-width: 2; stroke-dasharray: 8 7; marker-end: url(#arrow); }
+      .band { fill: #e2e8f0; opacity: 0.55; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1400" height="900"/>
+  <text class="title" x="70" y="70">Internal Provisioning API - Production Architecture</text>
+  <text class="subtitle" x="70" y="100">Stateless ECS/Fargate middleware with DynamoDB-backed request state, idempotency, provider brokering, and CloudWatch observability.</text>
+
+  <rect class="band" x="40" y="135" width="1320" height="690" rx="18"/>
+  <text class="tiny" x="70" y="164">AWS Production Environment</text>
+
+  <rect class="box" x="70" y="345" width="210" height="120" rx="12"/>
+  <text class="label" x="105" y="390">Jenkins Pipeline</text>
+  <text class="small" x="105" y="420">Parameterized build</text>
+  <text class="small" x="105" y="442">Runs validation</text>
+
+  <rect class="box aws" x="365" y="345" width="230" height="120" rx="12"/>
+  <text class="label" x="405" y="386">Application Load</text>
+  <text class="label" x="405" y="411">Balancer</text>
+  <text class="small" x="405" y="440">HTTPS endpoint</text>
+
+  <rect class="box aws" x="690" y="245" width="300" height="300" rx="18"/>
+  <text class="label" x="732" y="285">ECS Fargate Service</text>
+  <text class="small" x="732" y="313">internal-provisioning-api</text>
+  <rect class="box" x="735" y="340" width="210" height="70" rx="10"/>
+  <text class="small" x="770" y="370">FastAPI Task A</text>
+  <text class="tiny" x="770" y="392">stateless container</text>
+  <rect class="box" x="735" y="435" width="210" height="70" rx="10"/>
+  <text class="small" x="770" y="465">FastAPI Task B</text>
+  <text class="tiny" x="770" y="487">auto replaced on failure</text>
+
+  <rect class="box state" x="1075" y="165" width="240" height="120" rx="12"/>
+  <text class="label" x="1120" y="207">DynamoDB</text>
+  <text class="small" x="1120" y="237">request state</text>
+  <text class="small" x="1120" y="259">idempotency</text>
+
+  <rect class="box security" x="1075" y="340" width="240" height="120" rx="12"/>
+  <text class="label" x="1115" y="382">Secrets Manager</text>
+  <text class="small" x="1115" y="412">provider URLs</text>
+  <text class="small" x="1115" y="434">tokens and config</text>
+
+  <rect class="box observability" x="1075" y="515" width="240" height="120" rx="12"/>
+  <text class="label" x="1117" y="557">CloudWatch</text>
+  <text class="small" x="1117" y="587">JSON logs</text>
+  <text class="small" x="1117" y="609">metrics and alarms</text>
+
+  <rect class="box provider" x="690" y="650" width="250" height="105" rx="12"/>
+  <text class="label" x="737" y="692">OneCloud API</text>
+  <text class="small" x="737" y="722">VM and hardware pool</text>
+
+  <rect class="box provider" x="1010" y="650" width="250" height="105" rx="12"/>
+  <text class="label" x="1070" y="692">GTAX API</text>
+  <text class="small" x="1070" y="722">CaaS validation pool</text>
+
+  <path class="line" d="M280 405 H355"/>
+  <path class="line" d="M595 405 H680"/>
+  <path class="line" d="M990 330 C1040 300 1050 250 1065 230"/>
+  <path class="line" d="M990 395 H1065"/>
+  <path class="line" d="M990 460 C1035 485 1055 535 1065 575"/>
+  <path class="line" d="M825 545 V640"/>
+  <path class="line" d="M950 545 C1035 580 1090 610 1125 640"/>
+
+  <path class="dashed" d="M175 465 C210 575 315 665 450 665 C570 665 620 595 700 520"/>
+  <text class="tiny" x="300" y="640">release call in Jenkins post/always</text>
+
+  <rect class="box" x="70" y="605" width="470" height="120" rx="12"/>
+  <text class="label" x="105" y="647">Provisioning Flow</text>
+  <text class="small" x="105" y="677">1. Jenkins requests a scenario with an idempotency key</text>
+  <text class="small" x="105" y="702">2. API reserves provider machine and deploys image</text>
+  <text class="small" x="105" y="727">3. Jenkins runs validation and calls release</text>
+
+  <rect class="box" x="70" y="185" width="470" height="105" rx="12"/>
+  <text class="label" x="105" y="227">Provider Routing Policy</text>
+  <text class="small" x="105" y="257">Package Validation and Static Analysis -> GTAX</text>
+  <text class="small" x="105" y="282">All other validation scenarios -> OneCloud</text>
+</svg>
