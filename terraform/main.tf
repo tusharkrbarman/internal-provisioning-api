@@ -118,6 +118,95 @@ resource "aws_iam_role_policy" "task_dynamodb" {
   policy = data.aws_iam_policy_document.task_dynamodb.json
 }
 
+data "aws_iam_policy_document" "github_deploy_assume_role" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringLike"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = [
+        "repo:${var.github_repository}:ref:refs/heads/main",
+        "repo:${var.github_repository}:environment:${var.github_deploy_environment}"
+      ]
+    }
+  }
+}
+
+resource "aws_iam_role" "github_deploy" {
+  name               = "${var.name}-deploy-role"
+  assume_role_policy = data.aws_iam_policy_document.github_deploy_assume_role.json
+  tags               = local.common_tags
+}
+
+data "aws_iam_policy_document" "github_deploy" {
+  statement {
+    sid       = "EcrLogin"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid = "PushApiImage"
+    actions = [
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:CompleteLayerUpload",
+      "ecr:DescribeRepositories",
+      "ecr:InitiateLayerUpload",
+      "ecr:PutImage",
+      "ecr:UploadLayerPart"
+    ]
+    resources = [aws_ecr_repository.api.arn]
+  }
+
+  statement {
+    sid = "ReadAndRegisterTaskDefinition"
+    actions = [
+      "ecs:DescribeTaskDefinition",
+      "ecs:RegisterTaskDefinition"
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid = "DeployService"
+    actions = [
+      "ecs:DescribeServices",
+      "ecs:UpdateService"
+    ]
+    resources = ["arn:aws:ecs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.api.name}/${aws_ecs_service.api.name}"]
+  }
+
+  statement {
+    sid       = "PassOnlyApiTaskRoles"
+    actions   = ["iam:PassRole"]
+    resources = [aws_iam_role.execution.arn, aws_iam_role.task.arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "github_deploy" {
+  name   = "${var.name}-deploy"
+  role   = aws_iam_role.github_deploy.id
+  policy = data.aws_iam_policy_document.github_deploy.json
+}
+
 resource "aws_security_group" "alb" {
   name        = "${var.name}-alb-sg"
   description = "Allow Jenkins and operators to call the provisioning API ALB"

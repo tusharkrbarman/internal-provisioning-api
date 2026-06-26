@@ -10,6 +10,7 @@ It creates:
 - DynamoDB table for provisioning request state
 - CloudWatch log group for ECS logs
 - IAM execution role and task role
+- IAM GitHub deployment role for application releases
 - ECS Fargate cluster, task definition, and service
 - Application Load Balancer, listener, target group, and security groups
 
@@ -28,6 +29,7 @@ Edit `terraform.tfvars` and set:
 - `service_subnet_ids`
 - optionally `alb_name` if you want a different public load balancer name
 - optionally `container_image` if you want to use an already-pushed ECR image
+- optionally `github_repository` if this repo is forked or renamed
 
 For the current demo-style deployment, using the same public subnets for `alb_subnet_ids` and `service_subnet_ids` is acceptable.
 
@@ -90,6 +92,22 @@ Example Jenkins value:
 ```text
 http://provisioning-api-alb-xxxxxxxx.ap-south-1.elb.amazonaws.com
 ```
+
+## 7. GitHub App Deployment Secret
+
+Terraform also outputs the IAM role used by the app deployment workflow:
+
+```powershell
+terraform output -raw github_deploy_role_arn
+```
+
+Store that value in this GitHub repository secret:
+
+```text
+AWS_DEPLOY_ROLE_ARN
+```
+
+The app deployment workflow can then build the Docker image in GitHub Actions, push it to ECR, register a new ECS task definition revision, and update the ECS service.
 
 ## Existing Console-Created Resources
 

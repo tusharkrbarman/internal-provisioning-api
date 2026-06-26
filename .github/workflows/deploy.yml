@@ -1,0 +1,89 @@
+name: Deploy API
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "app.py"
+      - "requirements.txt"
+      - "Dockerfile"
+      - ".dockerignore"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY || 'internal-provisioning-api' }}
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER || 'internal-provisioning-api-cluster' }}
+  ECS_SERVICE: ${{ vars.ECS_SERVICE || 'internal-provisioning-api-service' }}
+  ECS_TASK_DEFINITION_FAMILY: ${{ vars.ECS_TASK_DEFINITION_FAMILY || 'internal-provisioning-api' }}
+  ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME || 'internal-provisioning-api' }}
+
+jobs:
+  deploy:
+    name: Build And Deploy
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: app-deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tags
+        id: image
+        shell: bash
+        run: |
+          IMAGE_URI="${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}"
+          echo "uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=${IMAGE_URI}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=${IMAGE_URI}:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image.outputs.sha_tag }}
+            ${{ steps.image.outputs.latest_tag }}
+
+      - name: Download current ECS task definition
+        shell: bash
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition "${{ env.ECS_TASK_DEFINITION_FAMILY }}" \
+            --query taskDefinition \
+            --output json > task-definition.json
+
+      - name: Render ECS task definition with new image
+        id: render-task-definition
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.ECS_CONTAINER_NAME }}
+          image: ${{ steps.image.outputs.sha_tag }}
+
+      - name: Deploy ECS service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-task-definition.outputs.task-definition }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          service: ${{ env.ECS_SERVICE }}
+          wait-for-service-stability: true

@@ -136,6 +136,10 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform apply -auto-approve tfplan
 
+      - name: Show app deployment role ARN
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform output -raw github_deploy_role_arn
+
   destroy:
     name: Terraform Destroy
     runs-on: ubuntu-latest

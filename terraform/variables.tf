@@ -22,6 +22,18 @@ variable "environment" {
   default     = "prod"
 }
 
+variable "github_repository" {
+  description = "GitHub repository allowed to assume the app deployment role."
+  type        = string
+  default     = "tusharkrbarman/internal-provisioning-api"
+}
+
+variable "github_deploy_environment" {
+  description = "GitHub environment name used by the app deployment workflow."
+  type        = string
+  default     = "production"
+}
+
 variable "vpc_id" {
   description = "VPC ID where the ALB and ECS service will be deployed."
   type        = string

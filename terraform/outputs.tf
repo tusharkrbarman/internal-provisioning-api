@@ -27,3 +27,8 @@ output "ecs_service_name" {
   description = "ECS service name."
   value       = aws_ecs_service.api.name
 }
+
+output "github_deploy_role_arn" {
+  description = "IAM role ARN to store as the GitHub AWS_DEPLOY_ROLE_ARN secret."
+  value       = aws_iam_role.github_deploy.arn
+}

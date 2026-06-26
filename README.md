@@ -163,3 +163,7 @@ For EC2 deployment with systemd, see [EC2_DEPLOYMENT.md](EC2_DEPLOYMENT.md).
 ## Terraform
 
 For production-style AWS infrastructure as code, see [terraform/README.md](terraform/README.md).
+
+## Application Deployment
+
+For the GitHub Actions pipeline that builds the Docker image, pushes it to ECR, and updates ECS without using a local Docker engine, see [deploy/APP_DEPLOYMENT.md](deploy/APP_DEPLOYMENT.md).
