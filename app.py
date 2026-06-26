@@ -397,6 +397,7 @@ def health() -> dict[str, object]:
     return {
         "status": "ok",
         "service": SERVICE_NAME,
+        "deployment": "ecs-fargate",
         "store": store.store_type,
         "providers": {
             provider.value: url for provider, url in PROVIDER_URLS.items()
