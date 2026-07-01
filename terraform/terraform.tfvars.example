@@ -28,8 +28,12 @@ image_tag = "latest"
 onecloud_base_url = "https://dummy-onecloud-api.onrender.com"
 gtax_base_url     = "https://dummy-gtax-api.onrender.com"
 
-desired_count      = 1
-log_retention_days = 30
+desired_count             = 1
+autoscaling_min_capacity  = 1
+autoscaling_max_capacity  = 3
+autoscaling_cpu_target    = 70
+autoscaling_memory_target = 75
+log_retention_days        = 30
 
 allowed_http_cidr_blocks = [
   "0.0.0.0/0"

@@ -44,6 +44,10 @@ env:
   TF_VAR_service_subnet_ids: ${{ vars.TF_VAR_SERVICE_SUBNET_IDS }}
   TF_VAR_assign_public_ip: ${{ vars.TF_VAR_ASSIGN_PUBLIC_IP }}
   TF_VAR_desired_count: ${{ vars.TF_VAR_DESIRED_COUNT }}
+  TF_VAR_autoscaling_min_capacity: ${{ vars.TF_VAR_AUTOSCALING_MIN_CAPACITY || 1 }}
+  TF_VAR_autoscaling_max_capacity: ${{ vars.TF_VAR_AUTOSCALING_MAX_CAPACITY || 3 }}
+  TF_VAR_autoscaling_cpu_target: ${{ vars.TF_VAR_AUTOSCALING_CPU_TARGET || 70 }}
+  TF_VAR_autoscaling_memory_target: ${{ vars.TF_VAR_AUTOSCALING_MEMORY_TARGET || 75 }}
 
 jobs:
   plan:

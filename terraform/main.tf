@@ -387,5 +387,62 @@ resource "aws_ecs_service" "api" {
     aws_lb_listener.http
   ]
 
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
+
   tags = local.common_tags
+}
+
+resource "aws_appautoscaling_target" "ecs_service" {
+  max_capacity       = var.autoscaling_max_capacity
+  min_capacity       = var.autoscaling_min_capacity
+  resource_id        = "service/${aws_ecs_cluster.api.name}/${aws_ecs_service.api.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+
+  depends_on = [aws_ecs_service.api]
+
+  lifecycle {
+    precondition {
+      condition     = var.autoscaling_min_capacity <= var.autoscaling_max_capacity
+      error_message = "autoscaling_min_capacity must be less than or equal to autoscaling_max_capacity."
+    }
+  }
+}
+
+resource "aws_appautoscaling_policy" "ecs_cpu" {
+  name               = "${var.name}-cpu-target-tracking"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.ecs_service.resource_id
+  scalable_dimension = aws_appautoscaling_target.ecs_service.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.ecs_service.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    target_value       = var.autoscaling_cpu_target
+    scale_in_cooldown  = var.autoscaling_scale_in_cooldown
+    scale_out_cooldown = var.autoscaling_scale_out_cooldown
+
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+  }
+}
+
+resource "aws_appautoscaling_policy" "ecs_memory" {
+  name               = "${var.name}-memory-target-tracking"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.ecs_service.resource_id
+  scalable_dimension = aws_appautoscaling_target.ecs_service.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.ecs_service.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    target_value       = var.autoscaling_memory_target
+    scale_in_cooldown  = var.autoscaling_scale_in_cooldown
+    scale_out_cooldown = var.autoscaling_scale_out_cooldown
+
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageMemoryUtilization"
+    }
+  }
 }

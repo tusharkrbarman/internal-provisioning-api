@@ -26,6 +26,7 @@ Jenkins Pipeline
 ```text
 Container image registry: AWS ECR private repository
 Container runtime: ECS Fargate
+Scaling: ECS Service Auto Scaling using Application Auto Scaling
 Public entry point: Application Load Balancer
 State store: DynamoDB
 Logs: CloudWatch Logs
@@ -487,9 +488,49 @@ The ECS service keeps the Fargate task running.
 ```text
 Cluster: internal-provisioning-cluster
 Service: internal-provisioning-api-service
-Desired tasks: 1
+Initial desired tasks: 1
 Launch type: Fargate
 Task definition: internal-provisioning-api latest revision
+```
+
+### Service Auto Scaling
+
+The project uses ECS Service Auto Scaling, not an EC2 Auto Scaling Group.
+
+```text
+Fargate manages the underlying compute.
+Application Auto Scaling changes the ECS service desired task count.
+Terraform creates the scalable target and target tracking policies.
+```
+
+Current default scaling configuration:
+
+```text
+Minimum tasks: 1
+Maximum tasks: 3
+CPU target: 70 percent average utilization
+Memory target: 75 percent average utilization
+Scale out cooldown: 60 seconds
+Scale in cooldown: 120 seconds
+```
+
+The GitHub Terraform workflow can override these through repository variables:
+
+```text
+TF_VAR_AUTOSCALING_MIN_CAPACITY
+TF_VAR_AUTOSCALING_MAX_CAPACITY
+TF_VAR_AUTOSCALING_CPU_TARGET
+TF_VAR_AUTOSCALING_MEMORY_TARGET
+```
+
+Terraform also ignores drift on `desired_count` so that after AWS scales the service, the next Terraform apply does not reset the running task count.
+
+Interview wording:
+
+```text
+Because the service runs on Fargate, I do not manage EC2 Auto Scaling Groups.
+The production design uses ECS Service Auto Scaling. AWS scales the number of
+Fargate tasks based on CPU and memory target tracking policies.
 ```
 
 ### Load Balancer
@@ -1036,6 +1077,7 @@ Production mitigation:
 12. Jenkins pointed to ALB endpoint
 13. IAM role issue debugged through CloudWatch traceback
 14. Terraform infrastructure files added for production IaC
+15. ECS Service Auto Scaling added for Fargate task count
 ```
 
 ## 18. What Remains As Production Polish
@@ -1049,7 +1091,7 @@ These are not required for the demo to run, but they are good interview follow-u
 4. Add CloudWatch alarms for ECS task failures
 5. Add CloudWatch metric filters for provisioning failures
 6. Move provider URLs and future tokens to SSM Parameter Store or Secrets Manager
-7. Add autoscaling for ECS service if workload grows
+7. Add scheduled scaling or ALB request-count scaling if traffic patterns require it
 8. Add cleanup worker for expired/orphaned reservations
 9. Add DynamoDB TTL cleanup using expires_at
 10. Add dashboards for provisioning success/failure/latency

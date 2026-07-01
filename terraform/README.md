@@ -12,6 +12,7 @@ It creates:
 - IAM execution role and task role
 - IAM GitHub deployment role for application releases
 - ECS Fargate cluster, task definition, and service
+- ECS Service Auto Scaling for Fargate task count
 - Application Load Balancer, listener, target group, and security groups
 
 ## 1. Configure Variables
@@ -31,10 +32,31 @@ Edit `terraform.tfvars` and set:
 - optionally `container_image` if you want to use an already-pushed ECR image
 - optionally `github_repository` if this repo is forked or renamed
 - optionally `ecr_force_delete`; it defaults to `true` so the destroy workflow can remove the app ECR repo even after images are pushed
+- optionally `autoscaling_min_capacity`, `autoscaling_max_capacity`, `autoscaling_cpu_target`, and `autoscaling_memory_target`
 
 For the current demo-style deployment, using the same public subnets for `alb_subnet_ids` and `service_subnet_ids` is acceptable.
 
 For stricter production networking, place the ALB in public subnets, place ECS in private subnets, set `assign_public_ip = false`, and provide NAT for outbound calls to OneCloud and GTAX.
+
+## ECS Service Auto Scaling
+
+This project uses ECS Service Auto Scaling, not an EC2 Auto Scaling Group. Fargate manages the worker compute. Terraform creates an Application Auto Scaling target for the ECS service desired task count and two target tracking policies:
+
+- CPU target tracking with `ECSServiceAverageCPUUtilization`
+- memory target tracking with `ECSServiceAverageMemoryUtilization`
+
+The ECS service starts with `desired_count`, then AWS can scale it between `autoscaling_min_capacity` and `autoscaling_max_capacity`. Terraform ignores later drift on `desired_count` so a normal infrastructure apply does not reset a service that AWS scaled during traffic.
+
+For higher availability in production, set `autoscaling_min_capacity = 2` and run the service across at least two subnets/AZs.
+
+When bootstrapping a brand-new ECR repository with no image yet, temporarily set both values to `0` so ECS does not try to start a task before the image exists:
+
+```hcl
+desired_count            = 0
+autoscaling_min_capacity = 0
+```
+
+After the first image is pushed, set them back to at least `1`.
 
 ## 2. Initialize Terraform
 
@@ -109,6 +131,26 @@ AWS_DEPLOY_ROLE_ARN
 ```
 
 The app deployment workflow can then build the Docker image in GitHub Actions, push it to ECR, register a new ECS task definition revision, and update the ECS service.
+
+## Terraform Role Permissions For Auto Scaling
+
+If the GitHub Terraform role is managed manually, make sure it can manage ECS Service Auto Scaling resources. Add these actions to the policy attached to `internal-provisioning-api-terraform-role`:
+
+```json
+{
+  "Sid": "ManageProjectApplicationAutoScaling",
+  "Effect": "Allow",
+  "Action": [
+    "application-autoscaling:RegisterScalableTarget",
+    "application-autoscaling:DeregisterScalableTarget",
+    "application-autoscaling:DescribeScalableTargets",
+    "application-autoscaling:PutScalingPolicy",
+    "application-autoscaling:DeleteScalingPolicy",
+    "application-autoscaling:DescribeScalingPolicies"
+  ],
+  "Resource": "*"
+}
+```
 
 ## Existing Console-Created Resources
 

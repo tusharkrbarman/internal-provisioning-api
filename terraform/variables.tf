@@ -108,9 +108,70 @@ variable "task_memory" {
 }
 
 variable "desired_count" {
-  description = "Number of ECS tasks to run."
+  description = "Initial number of ECS tasks to run before service auto scaling adjusts capacity."
   type        = number
   default     = 1
+
+  validation {
+    condition     = var.desired_count >= 0
+    error_message = "desired_count must be greater than or equal to 0."
+  }
+}
+
+variable "autoscaling_min_capacity" {
+  description = "Minimum number of ECS tasks maintained by service auto scaling."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.autoscaling_min_capacity >= 0
+    error_message = "autoscaling_min_capacity must be greater than or equal to 0."
+  }
+}
+
+variable "autoscaling_max_capacity" {
+  description = "Maximum number of ECS tasks allowed by service auto scaling."
+  type        = number
+  default     = 3
+
+  validation {
+    condition     = var.autoscaling_max_capacity >= 1
+    error_message = "autoscaling_max_capacity must be at least 1."
+  }
+}
+
+variable "autoscaling_cpu_target" {
+  description = "Target average CPU utilization percentage for ECS service auto scaling."
+  type        = number
+  default     = 70
+
+  validation {
+    condition     = var.autoscaling_cpu_target > 0 && var.autoscaling_cpu_target <= 100
+    error_message = "autoscaling_cpu_target must be greater than 0 and less than or equal to 100."
+  }
+}
+
+variable "autoscaling_memory_target" {
+  description = "Target average memory utilization percentage for ECS service auto scaling."
+  type        = number
+  default     = 75
+
+  validation {
+    condition     = var.autoscaling_memory_target > 0 && var.autoscaling_memory_target <= 100
+    error_message = "autoscaling_memory_target must be greater than 0 and less than or equal to 100."
+  }
+}
+
+variable "autoscaling_scale_in_cooldown" {
+  description = "Seconds to wait before allowing another scale-in action."
+  type        = number
+  default     = 120
+}
+
+variable "autoscaling_scale_out_cooldown" {
+  description = "Seconds to wait before allowing another scale-out action."
+  type        = number
+  default     = 60
 }
 
 variable "dynamodb_table_name" {
